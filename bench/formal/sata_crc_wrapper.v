@@ -2,7 +2,7 @@
 //
 // Filename: 	bench/formal/sata_crc_wrapper.v
 // {{{
-// Project:	Demonstration SONAR project
+// Project:	A Wishbone SATA controller
 //
 // Purpose:	Composes two CRC modules together, as a means for formally
 //		verifying both.  If the design works as intended, values will
@@ -15,11 +15,27 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2021-2022, Gisselquist Technology, LLC
+// Copyright (C) 2021-2023, Gisselquist Technology, LLC
 // {{{
-// The algorithms described in this file are proprietary to Gisselquist
-// Technology, LLC.  They may not be redistributed without the express
-// permission of an authorized representative of Gisselquist Technology.
+// This file is part of the WBSATA project.
+//
+// The WBSATA project is a free software (firmware) project: you may
+// redistribute it and/or modify it under the terms of  the GNU General Public
+// License as published by the Free Software Foundation, either version 3 of
+// the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTIBILITY or
+// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+// for more details.
+//
+// You should have received a copy of the GNU General Public License along
+// with this program.  If not, please see <http://www.gnu.org/licenses/> for a
+// copy.
+// }}}
+// License:	GPL, v3, as defined and found on www.gnu.org,
+// {{{
+//		http://www.gnu.org/licenses/gpl.html
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
