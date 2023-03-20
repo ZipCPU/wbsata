@@ -1,0 +1,76 @@
+[*]
+[*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
+[*] Tue Jul 12 19:17:15 2022
+[*]
+[dumpfile] "(null)"
+[timestart] 0
+[size] 1742 710
+[pos] -1 -1
+*-4.484481 50 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] sata_scrambler.
+[sst_width] 343
+[signals_width] 174
+[sst_expanded] 1
+[sst_vpaned_height] 187
+@28
+sata_scrambler.i_clk
+sata_scrambler.i_reset
+@200
+-
+@28
+[color] 3
+sata_scrambler.S_AXIS_TVALID
+@29
+[color] 2
+sata_scrambler.S_AXIS_TREADY
+@22
+[color] 3
+sata_scrambler.S_AXIS_TDATA[31:0]
+@28
+[color] 3
+sata_scrambler.S_AXIS_TLAST
+@200
+-
+@28
+sata_scrambler.tx_valid
+sata_scrambler.tx_ready
+@22
+sata_scrambler.tx_data[31:0]
+@28
+sata_scrambler.tx_last
+@22
+sata_scrambler.tx_word[31:0]
+@200
+-
+@29
+[color] 2
+sata_scrambler.M_AXIS_TVALID
+@28
+[color] 3
+sata_scrambler.M_AXIS_TREADY
+@23
+[color] 2
+sata_scrambler.M_AXIS_TDATA[31:0]
+@29
+[color] 2
+sata_scrambler.M_AXIS_TLAST
+@200
+-
+@22
+sata_scrambler.rx.fill[15:0]
+sata_scrambler.rx.next_fill[15:0]
+sata_scrambler.rx.prn[31:0]
+@200
+-
+@28
+sata_scrambler.f_ckval
+@22
+sata_scrambler.f_ckword[31:0]
+@28
+sata_scrambler.f_past_valid
+@22
+sata_scrambler.f_value[31:0]
+sata_scrambler.m_word[31:0]
+sata_scrambler.s_word[31:0]
+[pattern_trace] 1
+[pattern_trace] 0

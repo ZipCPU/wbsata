@@ -1,0 +1,26 @@
+[tasks]
+prf
+cvr
+
+[options]
+prf: depth 5
+prf: mode prove
+cvr: mode cover
+
+[engines]
+smtbmc
+
+[script]
+read -formal sata_framer.v
+read -formal satatx_framer.v
+read -formal satarx_framer.v
+--pycode-begin--
+cmd = "hierarchy -top sata_framer"
+output(cmd)
+--pycode-end--
+prep -top sata_framer
+
+[files]
+sata_framer.v
+../../rtl/satarx_framer.v
+../../rtl/satatx_framer.v

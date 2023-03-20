@@ -1,0 +1,26 @@
+[tasks]
+prf
+cvr
+
+[options]
+depth 7
+prf: mode prove
+cvr: mode cover
+
+[engines]
+smtbmc
+
+[script]
+read -formal sata_scrambler.v
+read -formal satatx_scrambler.v
+read -formal satarx_scrambler.v
+--pycode-begin--
+cmd = "hierarchy -top sata_scrambler"
+output(cmd)
+--pycode-end--
+prep -top sata_scrambler
+
+[files]
+sata_scrambler.v
+../../rtl/satarx_scrambler.v
+../../rtl/satatx_scrambler.v

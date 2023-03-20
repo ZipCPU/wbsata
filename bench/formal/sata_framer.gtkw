@@ -1,0 +1,68 @@
+[*]
+[*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
+[*] Wed Jul 13 11:24:42 2022
+[*]
+[dumpfile] "(null)"
+[timestart] 0
+[size] 1825 648
+[pos] -1 -1
+*-4.146061 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[sst_width] 343
+[signals_width] 174
+[sst_expanded] 1
+[sst_vpaned_height] 164
+@28
+sata_framer.i_clk
+sata_framer.i_reset
+@200
+-
+@28
+[color] 3
+sata_framer.S_AXIS_TVALID
+@29
+[color] 2
+sata_framer.S_AXIS_TREADY
+@22
+[color] 3
+sata_framer.S_AXIS_TDATA[31:0]
+@28
+[color] 3
+sata_framer.S_AXIS_TLAST
+@200
+-
+@28
+sata_framer.tx_valid
+sata_framer.tx_ready
+@22
+sata_framer.tx_data[32:0]
+sata_framer.tx_word[31:0]
+@200
+-
+@29
+[color] 2
+sata_framer.M_AXIS_TVALID
+@23
+[color] 2
+sata_framer.M_AXIS_TDATA[31:0]
+@29
+[color] 2
+sata_framer.M_AXIS_TLAST
+[color] 2
+sata_framer.M_AXIS_TABORT
+@200
+-
+@28
+sata_framer.f_ckval
+@22
+sata_framer.f_ckword[31:0]
+@28
+sata_framer.f_past_valid
+@22
+sata_framer.f_value[31:0]
+sata_framer.m_word[31:0]
+@28
+sata_framer.phy_ready
+@22
+sata_framer.s_word[31:0]
+[pattern_trace] 1
+[pattern_trace] 0

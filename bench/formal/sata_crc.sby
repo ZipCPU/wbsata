@@ -1,0 +1,27 @@
+[tasks]
+prf
+cvr
+
+[options]
+depth 5		# Depth 6 takes too long (16hrs+)
+prf: mode prove
+cvr: mode cover
+cvr: depth 12
+
+[engines]
+smtbmc
+
+[script]
+read -formal sata_crc_wrapper.v
+read -formal satatx_crc.v
+read -formal satarx_crc.v
+--pycode-begin--
+cmd = "hierarchy -top sata_crc_wrapper"
+output(cmd)
+--pycode-end--
+prep -top sata_crc_wrapper
+
+[files]
+sata_crc_wrapper.v
+../../rtl/satarx_crc.v
+../../rtl/satatx_crc.v

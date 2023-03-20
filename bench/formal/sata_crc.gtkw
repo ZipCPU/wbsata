@@ -1,0 +1,75 @@
+[*]
+[*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
+[*] Tue Jul 12 17:24:36 2022
+[*]
+[dumpfile_mtime] "Tue Jul 12 17:24:02 2022"
+[dumpfile_size] 24636
+[timestart] 115
+[size] 1835 729
+[pos] -1 -1
+*-3.926169 200 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] sata_crc_wrapper.
+[sst_width] 343
+[signals_width] 174
+[sst_expanded] 1
+[sst_vpaned_height] 192
+@28
+sata_crc_wrapper.i_clk
+sata_crc_wrapper.i_reset
+@200
+-
+@28
+[color] 3
+sata_crc_wrapper.S_AXIS_TVALID
+sata_crc_wrapper.S_AXIS_TREADY
+@22
+sata_crc_wrapper.S_AXIS_TDATA[31:0]
+@28
+sata_crc_wrapper.S_AXIS_TLAST
+sata_crc_wrapper.tx.state[1:0]
+@22
+sata_crc_wrapper.tx.crc[31:0]
+sata_crc_wrapper.s_word[31:0]
+@200
+-
+@28
+sata_crc_wrapper.phy_reliable
+sata_crc_wrapper.phy_ready
+@22
+sata_crc_wrapper.phy_errors[31:0]
+@200
+-
+@28
+[color] 3
+sata_crc_wrapper.tx_valid
+sata_crc_wrapper.tx_ready
+@22
+sata_crc_wrapper.tx_data[31:0]
+@28
+sata_crc_wrapper.tx_last
+@22
+sata_crc_wrapper.tx_word[31:0]
+@200
+-
+@28
+[color] 3
+sata_crc_wrapper.rx.r_valid
+@22
+sata_crc_wrapper.rx.r_data[31:0]
+sata_crc_wrapper.rx.crc[31:0]
+@28
+sata_crc_wrapper.rx.error
+@200
+-
+@28
+[color] 3
+sata_crc_wrapper.M_AXIS_TVALID
+@23
+sata_crc_wrapper.M_AXIS_TDATA[31:0]
+@28
+sata_crc_wrapper.M_AXIS_TLAST
+sata_crc_wrapper.M_AXIS_TABORT
+@22
+sata_crc_wrapper.m_word[31:0]
+[pattern_trace] 1
+[pattern_trace] 0
