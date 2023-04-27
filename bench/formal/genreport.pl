@@ -45,13 +45,15 @@ $dir = ".";
 @proofs = (
 	"sata_crc",
 	"sata_framer",
-	"sata_scrambler"
+	"sata_scrambler",
+	"satatb_bwrap"
 	);
 
 %desc = (
 	"sata_crc"		=> "SATA CRC",
 	"sata_framer"		=> "SATA Framer",
-	"sata_scrambler"	=> "SATA Scrambler"
+	"sata_scrambler"	=> "SATA Scrambler",
+	"satatb_bwrap"		=> "SATA 8B/10B encoder, 10B/8B decoder"
 	);
 ## }}}
 

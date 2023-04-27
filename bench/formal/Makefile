@@ -36,13 +36,14 @@
 ################################################################################
 ##
 ## }}}
-all: crc framer scrambler
+all: crc framer scrambler satatb_bwrap
 
 RTL := ../../rtl
 
 CRC := sata_crc
 FRAMR := sata_framer
 SCRAMBLR := sata_scrambler
+BWRAP := satatb_bwrap
 
 .PHONY: crc sata_crc
 ## {{{
@@ -72,6 +73,14 @@ $(FRAMR)_prf/PASS: $(FRAMR).sby $(FRAMR).v $(RTL)/satarx_framer.v $(RTL)/satatx_
 	sby -f $(FRAMR).sby prf
 $(FRAMR)_cvr/PASS: $(FRAMR).sby $(FRAMR).v $(RTL)/satarx_framer.v $(RTL)/satatx_framer.v
 	sby -f $(FRAMR).sby cvr
+## }}}
+
+.PHONY: bwrap satatb_bwrap
+## {{{
+bwrap: satatb_bwrap
+satatb_bwrap: $(BWRAP)_prf/PASS
+$(BWRAP)_prf/PASS: $(BWRAP).sby $(BWRAP).v ../verilog/satatb_8b10b.v ../verilog/satatb_10b8b.v
+	sby -f $(BWRAP).sby prf
 ## }}}
 
 .PHONY: report

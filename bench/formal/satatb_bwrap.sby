@@ -1,0 +1,26 @@
+[tasks]
+prf
+# cvr
+
+[options]
+prf: mode bmc
+# cvr: mode cover
+depth 1
+
+[engines]
+smtbmc
+
+[script]
+read -formal satatb_bwrap.v
+read -formal satatb_8b10b.v
+read -formal satatb_10b8b.v
+--pycode-begin--
+cmd = "hierarchy -top satatb_bwrap"
+output(cmd)
+--pycode-end--
+prep -top satatb_bwrap
+
+[files]
+satatb_bwrap.v
+../verilog/satatb_8b10b.v
+../verilog/satatb_10b8b.v
