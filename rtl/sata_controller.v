@@ -45,7 +45,9 @@ module	sata_controller #(
 		parameter [0:0]	OPT_LOWPOWER = 1'b0,
 				OPT_LITTLE_ENDIAN = 1'b0,
 		// Verilator lint_on  UNUSED
-		parameter	LGFIFO = 12
+		parameter	LGFIFO = 12,
+		parameter	DW = 32,	// Wishbone width
+				AW = 30		// Wishbone address width
 		// }}}
 	) (
 		// {{{
@@ -61,6 +63,17 @@ module	sata_controller #(
 		output	reg		o_wb_ack,
 		output	reg	[31:0]	o_wb_data,
 		// }}}
+		// Wishbone DMA <-> memory interface
+		// {{{
+		output	wire		o_dma_cyc, o_dma_stb, o_dma_we,
+		output	wire [AW-1:0]	o_dma_addr,
+		output	wire [DW-1:0]	o_dma_data,
+		output	wire [DW/8-1:0]	o_dma_sel,
+		//
+		input	wire		i_dma_stall,
+		input	reg		i_dma_ack,
+		input	reg [DW-1:0]	i_dma_data,
+		// }}}
 		// Link <-> PHY interface
 		// {{{
 		input	wire		i_rxphy_clk,
@@ -69,8 +82,21 @@ module	sata_controller #(
 		input	wire		i_rxphy_valid,
 		input	wire	[32:0]	i_rxphy_data,
 		//
+		input	wire		i_txphy_ready,
 		output	wire		o_txphy_primitive,
 		output	wire	[31:0]	o_txphy_data,
+		//
+		output	wire		o_txphy_elecidle,
+		output	wire		o_txphy_cominit,
+		output	wire		o_txphy_comwake,
+		input	wire		i_txphy_comfinish,
+		//
+		input	wire		i_rxphy_elecidle,
+		input	wire		i_rxphy_cominit,
+		input	wire		i_rxphy_comwake,
+		output	wire		o_rxphy_cdrhold,
+		input	wire		i_rxphy_cdrlock,
+		//
 		output	wire		o_phy_reset,
 		input	wire		i_phy_ready
 		// }}}
@@ -102,7 +128,7 @@ module	sata_controller #(
 	// Transport layer
 	// {{{
 	sata_transport #(
-		.LGFIFO(LGFIFO)
+		.LGFIFO(LGFIFO), .AW(AW), .DW(DW)
 	) u_transport (
 		// {{{
 		.i_clk(i_clk), .i_reset(i_reset),
@@ -116,8 +142,20 @@ module	sata_controller #(
 		.o_wb_stall(o_wb_stall),
 		.o_wb_ack(o_wb_ack), .o_wb_data(o_wb_data),
 		// }}}
+		// Wishbone DMA interface
+		// {{{
+		.o_dma_cyc(o_dma_cyc), .o_dma_stb(o_dma_stb),
+			.o_dma_we(o_dma_we),
+		.o_dma_addr(o_dma_addr),
+		.o_dma_data(o_dma_data), .o_dma_sel(o_dma_sel),
+		//
+		.i_dma_stall(i_dma_stall),
+		.i_dma_ack(i_dma_ack), .i_dma_data(i_dma_data),
+		.i_dma_err(i_dma_err),
+		// }}}
 		// Link layer interface
 		// {{{
+		// h2d == host (fpga)   to device (disk)
 		.o_tran_valid(h2d_tran_valid),
 		.i_tran_ready(h2d_tran_ready),
 		.o_tran_data(h2d_tran_data),
@@ -125,6 +163,7 @@ module	sata_controller #(
 		.i_tran_success(h2d_tran_success),
 		.i_tran_failed(h2d_tran_failed),
 		//
+		// d2h == device (disk) to host (fpga)
 		.i_tran_valid(d2h_tran_valid),
 		.o_tran_full(d2h_tran_full),
 		.o_tran_empty(d2h_tran_empty),
@@ -133,7 +172,7 @@ module	sata_controller #(
 		.i_tran_abort(d2h_tran_abort),
 		//
 		.i_link_err(link_error),
-		.i_link_ready(link_ready)
+		.i_link_ready(link_ready && comlink_up)
 		// }}}
 		// }}}
 	);
@@ -144,6 +183,11 @@ module	sata_controller #(
 	// {{{
 	reg		tx_link_reset;
 	reg	[1:0]	tx_reset_pipe;
+
+	wire		tx_link_primitive;
+	wire	[31:0]	tx_link_data;
+	wire		link_reset_request;
+	wire		link_ready;
 
 	initial	{ tx_link_reset, tx_reset_pipe } = -1;
 	always @(posedge i_txphy_clk or posedge i_reset)
@@ -182,16 +226,66 @@ module	sata_controller #(
 		// PHY interface
 		// {{{
 		.i_rx_clk(i_rxphy_clk),
-		.i_rx_valid(i_rxphy_valid),
+		.i_rx_valid(i_rxphy_valid && comlink_up),
 		.i_rx_data(i_rxphy_data),
 		//
-		.o_phy_primitive(o_txphy_primitive),
-		.o_phy_data(o_txphy_data),
-		.o_phy_reset(o_phy_reset),
-		.i_phy_ready(i_phy_ready)
+		.o_phy_primitive(tx_link_primitive),
+		.o_phy_data(tx_link_data),
+		.o_phy_reset(link_reset_request),
+		.i_phy_ready(link_ready)
 		// }}}
 		// }}}
 	);
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Reset (COMRESET, COMWAKE, etc.) controller
+	// {{{
+	//
+
+	sata_reset
+	u_reset (
+		.i_tx_clk(i_txphy_clk),
+		.i_rx_clk(i_rxphy_clk),
+		.i_reset(tx_link_reset),	// TX clock domain
+		//
+		.i_reset_request(link_reset_request),
+		//
+		// .i_link_err(link_err),
+		// OOB signaling
+		// {{{
+		// TX clock signals
+		.o_tx_elecidle(o_txphy_elecidle),
+		.o_tx_cominit(o_txphy_cominit),
+		.o_tx_comwake(o_txphy_comwake),
+		.i_tx_comfinish(i_txphy_comfinish),
+		.o_rx_rxcdrhold(o_rxphy_cdrhold),		// Async
+		//
+		// RX clock domain
+		.i_rx_elecidle(i_rxphy_elecidle),
+		.i_rx_cominit(i_rxphy_cominit),
+		.i_rx_comwake(i_rxphy_comwake),
+		.i_rx_cdrlock(i_rxphy_cdrlock),
+		// }}}
+		// Data
+		// {{{
+		// Need to look for RX align primitives
+		.i_rx_valid(i_rxphy_valid),		// Look for align
+		.i_rx_data(i_rxphy_data),
+		//
+		// TX path, goes through RESET primitive
+		.o_tx_ready(link_ready),
+		.i_tx_primitive(tx_link_primitive),
+		.i_tx_data(tx_link_data),
+		//
+		.o_phy_primitive(o_txphy_primitive),
+		.o_phy_data(o_txphy_data),
+		.i_phy_ready(i_txphy_ready),
+		// }}}
+		//
+		.o_link_up(comlink_up)		// TX clock domain
+	);
+
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//

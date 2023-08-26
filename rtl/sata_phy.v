@@ -56,7 +56,6 @@ module	sata_phy #(
 	) (
 		// {{{
 		input	wire		i_wb_clk, i_reset, i_ref_clk200,
-		input	wire		i_valid,
 		output	wire		o_ready, o_init_err,
 		// Wishbone DRP Control
 		// {{{
