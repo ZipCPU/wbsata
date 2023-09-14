@@ -112,7 +112,10 @@ module	satarx_scrambler #(
 		if (!M_AXIS_TVALID || M_AXIS_TREADY)
 		begin
 			M_AXIS_TVALID <= S_AXIS_TVALID;
-			M_AXIS_TDATA  <= S_AXIS_TDATA ^ prn;
+			if (i_cfg_scrambler_en)
+				M_AXIS_TDATA  <= S_AXIS_TDATA ^ prn;
+			else
+				M_AXIS_TDATA  <= S_AXIS_TDATA;
 			M_AXIS_TLAST  <= S_AXIS_TLAST;
 
 			if (OPT_LOWPOWER && !S_AXIS_TVALID)

@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	satatb_8b10b.v
+// Filename:	mdl_s8b10b.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -45,18 +45,21 @@
 //
 `default_nettype none
 // }}}
-module	satatb_8b10b (
+module	mdl_s8b10b (
 		input	wire	[9:0]	S_DATA,
 		//
 		output	wire	[10:0]	M_DATA	// Bit[9] TX FIRST, Bit[0] Last
 	);
 
+	// Local declarations
+	// {{{
 	wire		rd = S_DATA[9];
 
 	reg		r_6d, r_nd;	// Running disparity
 	reg	[5:0]	r_6b;
 	reg	[3:0]	r_4b;
 	reg	[10:0]	encoded;
+	// }}}
 
 	always @(*)
 	case(S_DATA[4:0])	// = EDCBA

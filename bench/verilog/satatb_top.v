@@ -225,5 +225,4 @@ module	satatb_top;
 	assign	wb_sata_err = 1'b0;
 
 	// }}}
-
 endmodule

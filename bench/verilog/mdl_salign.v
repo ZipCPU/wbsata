@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	satatb_align.v
+// Filename:	mdl_salign.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -38,22 +38,27 @@
 //
 `default_nettype none
 // }}}
-module	satatb_align // #()
+module	mdl_salign // #()
 	(
+		// {{{
 		input	wire		i_clk,		// Bit clock
 					i_reset,	// Async reset
 		input	wire		i_rx_p,
 		output	reg		o_valid,
 		output	reg		o_keyword,
 		output	reg	[31:0]	o_data
+		// }}}
 	);
 
+	// Local declarations
+	// {{{
 	reg		syncd;
 	reg	[3:0]	offset;
 
 	reg	[39:0]	ishift_reg, pre_sync;
 	wire		dcd_ctrl, dcd_illegal, ign_dcd_valid, ign_dcd_ready;
 	wire	[31:0]	dcd_data;
+	// }}}
 
 	initial	ishift_reg = 0;
 	always @(posedge i_clk)
@@ -62,7 +67,7 @@ module	satatb_align // #()
 	else
 		ishift_reg <= { ishift_reg[38:0], i_rx_p };
 
-	satatb_10b8bw #(
+	mdl_s10b8bw #(
 		.OPT_REGISTERED(1'b1)
 	) u_decoder (
 		.i_clk(i_clk),
@@ -100,30 +105,31 @@ module	satatb_align // #()
 		end
 	end else begin
 		offset <= offset + 1;
-		if (offset == 0 && dcd_illegal)
-		begin
-			syncd  <= 0;
+		if (offset >= 39)
 			offset <= 0;
-		end
+		if (offset == 39 && dcd_illegal)
+			syncd  <= 0;
 	end
 
 	always @(posedge i_clk)
 	if (!i_reset)
 		o_valid <= 0;
 	else
-		o_valid <= (syncd && offset == 0);
+		o_valid <= (syncd && offset == 39 && !dcd_illegal);
 
 	always @(posedge i_clk)
 	if (!i_reset)
 		{ o_keyword, o_data } <= 0;
 	else if (!syncd)
 		{ o_keyword, o_data } <= 0;
-	else if (syncd && offset == 0)
+	else if (syncd && offset == 39)
 		{ o_keyword, o_data } <= { dcd_ctrl, dcd_data };
 
 	// Keep Verilator happy
+	// {{{
 	// Verilator lint_off UNUSED
 	wire	unused;
 	assign	unused = &{ 1'b0, ign_dcd_valid, ign_dcd_ready };
 	// Verilator lint_on  UNUSED
+	// }}}
 endmodule

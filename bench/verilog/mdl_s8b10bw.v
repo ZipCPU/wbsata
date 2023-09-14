@@ -1,13 +1,23 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	satatb_8b10bw.v
+// Filename:	mdl_s8b10bw.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
 // Purpose:	Encodes a 32-bit word in 8b10b encoding.  The first byte of this
 //		word is found in bits 7:0, in little endian fashion.  When it
 //	comes to the output, bit[39] is to be transmitted first, and bit[0]
-//	last.
+//	last.  So ... little endian in, big endian out.
+//
+//	Both inputs and outputs are based upon the AXI stream protocol, offering
+//	full backpressure support.  (This is intended for a device *model*,
+//	where such support might actually be achieved.)  External events (i.e.
+//	clocks, CDCs, etc) will determine handshaking.
+//
+//	The implementation works by calling a sub-block to handle 8b10b
+//	encoding on a byte by byte level.  Again, this works and meets
+//	timing because this is for a test bench that will have no timing issues.
+//
 //
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC
@@ -40,7 +50,8 @@
 //
 `default_nettype none
 // }}}
-module	satatb_8b10bw (
+module	mdl_s8b10bw (
+		// {{{
 		input	wire	i_clk, i_reset,
 		input	wire		S_VALID,	// *MUST* be == 1
 		output	wire		S_READY,
@@ -50,31 +61,35 @@ module	satatb_8b10bw (
 		output	reg		M_VALID,
 		input	wire		M_READY,
 		output	reg	[39:0]	M_DATA	
+		// }}}
 	);
 
+	// Local declarations
+	// {{{
 	reg		running_disparity;
 	wire		d0, d1, d2, d3;
 	wire	[39:0]	w_data;
+	// }}}
 
-	satatb_8b10b
+	mdl_s8b10b
 	u_b0 (
 		.S_DATA({ running_disparity, S_CTRL, S_DATA[7:0] }),
 		.M_DATA({ d0, w_data[39:30] })	// Transmitted *first*
 	);
 
-	satatb_8b10b
+	mdl_s8b10b
 	u_b1 (
 		.S_DATA({ d0, 1'b0, S_DATA[15:8] }),
 		.M_DATA({ d1, w_data[29:20] })
 	);
 
-	satatb_8b10b
+	mdl_s8b10b
 	u_b2 (
 		.S_DATA({ d1, 1'b0, S_DATA[23:16] }),
 		.M_DATA({ d2, w_data[19:10] })
 	);
 
-	satatb_8b10b
+	mdl_s8b10b
 	u_b3 (
 		.S_DATA({ d2, 1'b0, S_DATA[31:24] }),
 		.M_DATA({ d3, w_data[9:0] })

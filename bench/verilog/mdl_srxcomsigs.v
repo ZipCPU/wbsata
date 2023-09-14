@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	satatb_comdet.v
+// Filename:	mdl_srxcomsigs.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -49,7 +49,7 @@
 `default_nettype none
 `timescale 1ns/1ps
 // }}}
-module satatb_comdet #(
+module mdl_srxcomsigs #(
 		parameter	OVERSAMPLE = 4,
 		// The SATA SYMBOL duration is one over the symbol rate, either
 		// 1.5GHz, 3.0GHz, or 6GHz, here expressed in ns.

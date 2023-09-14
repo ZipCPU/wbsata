@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	satatb_10b8b.v
+// Filename:	mdl_s10b8b.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -38,7 +38,7 @@
 //
 `default_nettype none
 // }}}
-module	satatb_10b8b (
+module	mdl_s10b8b (
 		input	wire	[9:0]	S_DATA,
 		//
 		output	wire	[8:0]	M_DATA

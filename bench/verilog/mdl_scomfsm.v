@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	satatb_comshake.v
+// Filename:	mdl_scomfsm.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -39,16 +39,20 @@
 `default_nettype	none
 `timescale 1ns / 1ps
 // }}}
-module	satatb_comshake #(
+module	mdl_scomfsm #(
 		parameter realtime	CLOCK_SYM_NS = 1000.0 / 1500.0
 	) (
+		// {{{
 		input	wire	i_txclk, i_reset,
 		output	reg	o_reset,
 		input	wire	i_rx_p, i_rx_n,
 		input	wire	i_tx,
 		output	wire	o_tx_p, o_tx_n
+		// }}}
 	);
 
+	// Local decalarations
+	// {{{
 	localparam [9:0]	D24_3 = { 6'b110011, 4'b0011 };
 	localparam [39:0] COM_SEQ = { D24_3, ~D24_3, D24_3, ~D24_3 };
 	localparam	NUM_COMINIT = 3,
@@ -56,6 +60,12 @@ module	satatb_comshake #(
 	localparam	COMINIT_IDLES = $rtoi(320   / CLOCK_SYM_NS),
 			COMWAKE_IDLES = $rtoi(106.7 / CLOCK_SYM_NS);
 	localparam	IDLE_WIDTH = $clog2(COMINIT_IDLES+1);
+
+	localparam	[2:0]	CLEAR_RESET = 3'h0,
+				SEND_INIT = 3'h1,
+				WAIT_WAKE = 3'h2,
+				SEND_WAKE = 3'h3,
+				ACTIVE    = 3'h4;
 
 	reg	[2:0]	fsm_state;
 	reg		r_tx;
@@ -67,8 +77,9 @@ module	satatb_comshake #(
 	wire		w_comwake, w_comreset;
 	reg	[2:0]	pipe_comreset, pipe_comwake;
 	reg		ck_comreset, ck_comwake;
+	// }}}
 
-	satatb_comdet #(
+	mdl_srxcomsigs #(
 		.OVERSAMPLE(4), .CLOCK_SYM_NS(CLOCK_SYM_NS)
 	) u_comdet (
 		.i_reset(i_reset),
@@ -92,12 +103,6 @@ module	satatb_comshake #(
 		idle_count = COMINIT_IDLES[IDLE_WIDTH-1:0];
 	end
 
-	localparam	[2:0]	CLEAR_RESET = 3'h0,
-				SEND_INIT = 3'h1,
-				WAIT_WAKE = 3'h2,
-				SEND_WAKE = 3'h3,
-				ACTIVE    = 3'h4;
-
 	always @(posedge i_txclk)
 	if (i_reset || ck_comreset)
 	begin
@@ -112,12 +117,13 @@ module	satatb_comshake #(
 	CLEAR_RESET: begin
 		// {{{
 		r_tx <= 0;
+		r_idle <= 1;
 		sreg <= COM_SEQ;
-		seq_count <= 40;
+		seq_count <= 0;	// Start in idle
 		subburst_count <= 0;
 		burst_count <= 0;
 		o_reset <= 1'b1;
-		if (!ck_comreset)
+		// if (!ck_comreset)
 			fsm_state <= SEND_INIT;
 		end
 		// }}}
@@ -128,6 +134,7 @@ module	satatb_comshake #(
 		begin
 			seq_count <= seq_count - 1;
 			r_tx <= sreg[39];
+			r_idle <= 1'b0;
 			sreg <= { sreg[38:0], 1'b0 };
 			idle_count <= COMINIT_IDLES[IDLE_WIDTH-1:0];
 
@@ -144,6 +151,7 @@ module	satatb_comshake #(
 				end
 			end
 		end else begin
+			r_idle <= 1;
 			seq_count <= 0;
 			sreg <= COM_SEQ;
 			r_tx <= 1'b0;
@@ -157,8 +165,9 @@ module	satatb_comshake #(
 		// {{{
 		o_reset <= 1'b1;
 		r_tx <= 0;
+		r_idle <= 1;
 		idle_count <= COMWAKE_IDLES[IDLE_WIDTH-1:0];
-		seq_count  <= 40;
+		seq_count  <= 0;
 		subburst_count <= 0;
 		burst_count<= 0;
 		if (ck_comwake)
@@ -172,6 +181,7 @@ module	satatb_comshake #(
 		if (ck_comwake)
 		begin
 			r_tx <= 0;
+			r_idle <= 1'b1;
 			idle_count <= COMWAKE_IDLES[IDLE_WIDTH-1:0];
 			seq_count  <= 0;
 			subburst_count <= 0;
@@ -180,6 +190,7 @@ module	satatb_comshake #(
 		begin
 			seq_count <= seq_count - 1;
 			r_tx <= sreg[39];
+			r_idle <= 1'b0;
 			sreg <= { sreg[38:0], 1'b0 };
 			idle_count <= COMWAKE_IDLES[IDLE_WIDTH-1:0];
 
@@ -202,6 +213,7 @@ module	satatb_comshake #(
 			seq_count <= 0;
 			sreg <= COM_SEQ;
 			r_tx <= 1'b0;
+			r_idle <= 1'b1;
 			if (idle_count > 0)
 				idle_count <= idle_count - 1;
 			else
@@ -211,11 +223,11 @@ module	satatb_comshake #(
 	ACTIVE: begin
 		o_reset <= 1'b1;
 		r_tx <= i_tx;
+		r_idle <= 1'b0;
 		end
 	default: begin end
 	endcase
 
-	assign	o_tx_p = r_tx;
-	assign	o_tx_n = !r_tx;
-
+	assign	o_tx_p = (r_idle) ? 1'bz :  r_tx;
+	assign	o_tx_n = (r_idle) ? 1'bz : !r_tx;
 endmodule

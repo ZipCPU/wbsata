@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	satatb_symdet.v
+// Filename:	mdl_sbitsync.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -42,7 +42,7 @@
 `default_nettype none
 `timescale 1ns/1ps
 // }}}
-module	satatb_symdet #(
+module	mdl_sbitsync #(
 		parameter	OVERSAMPLE = 4
 	) (
 		input	wire	i_reset,
