@@ -4,6 +4,7 @@
   - [`sata_transport`](sata_transport.v)
     - [sfifo](sfifo.v): Basic synchronous FIFO
     - [afifo](afifo.v): Basic asynchronous FIFO
+    - [`satatrn_wbarbiter`](satatrn_wbarbiter.v): Basic Wishbone arbiter
     - [`satatrn_fsm`](satatrn_fsm.v): 
     - [`satatrn_rxregfis`](satatrn_rxregfis.v): Selects between control FIS's, to go to the FSM, and DATA FIS's to be sent to the DMA
     - [`satatrn_txarb`](satatrn_txarb.v): Selects between control and data FIS's to be sent
