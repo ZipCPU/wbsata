@@ -40,7 +40,7 @@
 //
 `default_nettype none
 // }}}
-module	zipdma_s2mm #(
+module	satadma_s2mm #(
 		// {{{
 		parameter	ADDRESS_WIDTH=30,
 		parameter	BUS_WIDTH = 64,
@@ -57,6 +57,8 @@ module	zipdma_s2mm #(
 		// {{{
 		input	wire			i_request,
 		output	reg			o_busy, o_err,
+		input	wire			i_inc,
+		input	wire	[1:0]		i_size,
 		// input wire	[LGLENGTH:0]	i_transferlen,
 		input wire [ADDRESS_WIDTH-1:0]	i_addr,	// Byte address
 		// }}}
@@ -86,8 +88,15 @@ module	zipdma_s2mm #(
 
 	// Local decalarations
 	// {{{
-	localparam	[1:0]		WBLSB = $clog2(DW/8);
+	localparam	[1:0]		SZ_BYTE = 2'b11,
+					SZ_16B  = 2'b10,
+					SZ_32B  = 2'b01,
+					SZ_BUS  = 2'b00;
+	localparam			WBLSB = $clog2(DW/8);
 	integer				ik;
+	//
+	reg				r_inc;
+	reg	[1:0]			r_size;
 	//
 	reg	[ADDRESS_WIDTH:0]	next_addr;
 	reg	[WBLSB-1:0]		subaddr;
@@ -104,6 +113,17 @@ module	zipdma_s2mm #(
 
 	assign	o_wr_we = 1'b1;
 
+	// Copy config: r_inc, r_size(, r_addr)
+	// {{{
+	always @(posedge i_clk)
+	if (i_request && !o_busy)
+	begin
+		r_inc  <= i_inc;
+		r_size <= i_size;
+		// r_addr <= i_addr;
+	end
+	// }}}
+
 	// next_addr
 	// {{{
 	always @(*)
@@ -111,12 +131,43 @@ module	zipdma_s2mm #(
 		next_addr = { 1'b0, o_wr_addr, subaddr };
 
 		if (o_wr_stb && !i_wr_stall)
-			next_addr = next_addr + { {(AW-1){1'b0}}, 1'b1,
+		case(r_size)
+		SZ_BYTE: if (r_inc)
+			next_addr = next_addr + 1;
+		SZ_16B: begin	// 16-bit addressing
+			if (r_inc)
+				next_addr = next_addr + 2;
+			else
+				next_addr[  0] = 0;
+			end
+		SZ_32B: begin	// 32-bit addressing
+			if (r_inc)
+				next_addr = next_addr + 4;
+			else
+				next_addr[1:0] = 0;
+			end
+		SZ_BUS: begin	// Full word addressing
+			if (r_inc)
+				next_addr = next_addr + { {(AW-1){1'b0}}, 1'b1,
 						{(WBLSB){1'b0}} };
+			else
+				next_addr[WBLSB-1:0] = 0;
+			end
+		endcase
 	end
 
 	always @(*)
 		addr_overflow = next_addr[ADDRESS_WIDTH];
+`ifdef	FORMAL
+	always @(posedge i_clk)
+	if (!i_reset && o_busy && !r_inc)
+	case(r_size)
+	SZ_BYTE: begin end
+	SZ_16B: assert(next_addr[0] == 0);
+	SZ_32B: assert(next_addr[1:0] == 0);
+	SZ_BUS: assert(next_addr[WBLSB-1:0] == 0);
+	endcase
+`endif
 	// }}}
 
 	// next_data
@@ -210,7 +261,7 @@ module	zipdma_s2mm #(
 `endif
 	// }}}
 
-	// crc, stb, o_wr_addr, o_wr_data, o_wr_sel, o_busy, o_err, subaddr
+	// crc, stb, o_wr_addr, o_wr_sel, o_busy, o_err, subaddr
 	// {{{
 	initial	o_wr_cyc = 1'b0;
 	initial	o_wr_stb = 1'b0;
@@ -223,14 +274,10 @@ module	zipdma_s2mm #(
 		o_wr_cyc  <= 0;
 		o_wr_stb  <= 0;
 		o_wr_addr <= 0;
-		o_wr_data <= 0;
-		o_wr_sel  <= 0;
 
 		o_busy <= 1'b0;
 		o_err  <= 1'b0;
 		{ o_wr_addr, subaddr } <= {(ADDRESS_WIDTH){1'b0}};
-		{ r_data, o_wr_data  } <= {(2*DW  ){1'b0}};
-		{ r_sel,  o_wr_sel   } <= {(2*DW/8){1'b0}};
 		r_last <= 1'b0;
 		// }}}
 	end else if (!o_busy || o_err || (o_wr_cyc && i_wr_err))
@@ -239,8 +286,6 @@ module	zipdma_s2mm #(
 		o_wr_cyc  <= 0;
 		o_wr_stb  <= 0;
 		o_wr_addr <= 0;
-		o_wr_data <= 0;
-		o_wr_sel  <= 0;
 
 		o_busy <= i_request && !o_busy;
 
@@ -250,8 +295,6 @@ module	zipdma_s2mm #(
 
 		o_wr_addr <= i_addr[ADDRESS_WIDTH-1:WBLSB];
 		subaddr   <= i_addr[WBLSB-1:0];
-		{ r_data, o_wr_data } <= {(2*DW  ){1'b0}};
-		{ r_sel,  o_wr_sel  } <= {(2*DW/8){1'b0}};
 		r_last <= 1'b0;
 		// }}}
 	end else if (!o_wr_stb || !i_wr_stall)
@@ -270,15 +313,6 @@ module	zipdma_s2mm #(
 			begin
 				// Need to flush our last result out
 				{ o_wr_cyc, o_wr_stb } <= 2'b11;
-
-				if (OPT_LITTLE_ENDIAN)
-				begin
-					{ r_data, o_wr_data } <= next_data;
-					{ r_sel,  o_wr_sel  } <= next_sel;
-				end else begin
-					{ o_wr_data, r_data } <= next_data;
-					{ o_wr_sel,  r_sel  } <= next_sel;
-				end
 
 			end else if (wb_outstanding + (o_wr_stb ? 1:0)
 							== (i_wr_ack ? 1:0))
@@ -329,6 +363,31 @@ module	zipdma_s2mm #(
 `endif
 	// }}}
 
+	// o_wr_data, o_wr_sel
+	// {{{
+	always @(posedge i_clk)
+	if (!o_busy) // i_reset || !o_busy || o_err || (o_wr_cyc && i_wr_err))
+	begin
+		// {{{
+		{ r_data, o_wr_data  } <= {(2*DW  ){1'b0}};
+		{ r_sel,  o_wr_sel   } <= {(2*DW/8){1'b0}};
+		// }}}
+	end else if ((!o_wr_stb || !i_wr_stall) && !wb_pipeline_full
+					&& (r_last || S_VALID))
+	begin
+		// {{{
+		if (OPT_LITTLE_ENDIAN)
+		begin
+			{ r_data, o_wr_data } <= next_data;
+			{ r_sel,  o_wr_sel  } <= next_sel;
+		end else begin
+			{ o_wr_data, r_data } <= next_data;
+			{ o_wr_sel,  r_sel  } <= next_sel;
+		end
+		// }}}
+	end
+	// }}}
+
 	assign	S_READY = !r_last && o_busy && (!o_wr_stb || !i_wr_stall)
 				&& !wb_pipeline_full;
 
@@ -352,6 +411,8 @@ module	zipdma_s2mm #(
 	localparam	F_LGDEPTH = LGPIPE+1;
 			reg		f_past_valid;
 	(* anyconst *)	reg	[ADDRESS_WIDTH-1:0]	f_cfg_addr;
+	(* anyconst *)	reg	[1:0]	f_cfg_size;
+	(* anyconst *)	reg		f_cfg_inc;
 	wire	[F_LGDEPTH-1:0]		fwb_nreqs, fwb_nacks, fwb_outstanding;
 	reg	[ADDRESS_WIDTH:0]	f_posn, fwb_addr, fwb_posn;
 	reg	[WBLSB-1:0]	fr_sel_count, fr_sel_count_past;
@@ -379,21 +440,32 @@ module	zipdma_s2mm #(
 	else if ($past(i_request && o_busy))
 	begin
 		assume(i_request);
+		assume($stable(i_inc));
+		assume($stable(i_size));
 		assume($stable(i_addr));
 	end
 
 	always @(posedge i_clk)
 	if (i_request && !o_busy)
 	begin
+		// r_inc  <= i_inc;
+		// r_size <= i_size;
 		r_addr <= i_addr;
 	end
 
 	always @(*)
-		assume(f_cfg_addr[WBLSB-1:0] == 0);
+	if (!f_cfg_inc) case(f_cfg_size)
+	SZ_BYTE: begin end
+	SZ_16B:  assume(f_cfg_addr[0] == 1'b0);
+	SZ_32B:  assume(f_cfg_addr[1:0] == 2'b0);
+	SZ_BUS:  assume(f_cfg_addr[WBLSB-1:0] == 0);
+	endcase
 
 	always @(*)
 	if (i_request && !o_busy)
 	begin
+		assume(i_inc  == f_cfg_inc);
+		assume(i_size == f_cfg_size);
 		assume(i_addr == f_cfg_addr);
 	end
 
@@ -401,8 +473,16 @@ module	zipdma_s2mm #(
 	if (!i_reset && o_busy)
 	begin
 		assert(r_addr == f_cfg_addr);
+		assert(r_size == f_cfg_size);
+		assert(r_inc  == f_cfg_inc);
 
-		assert(r_addr[WBLSB-1:0] == 0);
+		if (!r_inc)
+		case(r_size)
+		SZ_BYTE: begin end
+		SZ_16B: assert(r_addr[0] == 1'b0);
+		SZ_32B: assert(r_addr[1:0] == 2'b0);
+		SZ_BUS: assert(r_addr[WBLSB-1:0] == 0);
+		endcase
 	end
 
 	// }}}
@@ -433,10 +513,18 @@ module	zipdma_s2mm #(
 		assume(S_BYTES > 0);
 
 		if (!S_LAST)
-		begin
-			assume(S_BYTES == (DW/8));
-		end else
-			assume(S_BYTES <= (DW/8));
+		case(f_cfg_size)
+		2'b11: assume(S_BYTES == 1);
+		2'b10: assume(S_BYTES == 2);
+		2'b01: assume(S_BYTES == 4);
+		2'b00: assume(S_BYTES == (DW/8));
+		endcase
+		else case(f_cfg_size)
+		2'b11: assume(S_BYTES == 1);
+		2'b10: assume(S_BYTES <= 2);
+		2'b01: assume(S_BYTES <= 4);
+		2'b00: assume(S_BYTES <= (DW/8));
+		endcase
 	end
 
 	always @(posedge i_clk)
@@ -455,8 +543,12 @@ module	zipdma_s2mm #(
 	begin
 		if (r_last)
 		begin
-		end else
-			assert(f_posn[WBLSB-1:0] == 0);
+		end else case(f_cfg_size)
+		2'b11: begin end
+		2'b10: assert(f_posn[0] == 1'b0);
+		2'b01: assert(f_posn[1:0] == 2'b0);
+		2'b00: assert(f_posn[WBLSB-1:0] == 0);
+		endcase
 	end
 
 	// }}}
@@ -515,11 +607,27 @@ module	zipdma_s2mm #(
 				+ (o_wr_stb ? $countones(o_wr_sel) : 0));
 
 	always @(*)
+	if (r_inc)
 	begin
 		fwb_addr = r_addr + fwb_posn;
 
 		if (fwb_posn > 0)
-			fwb_addr[WBLSB-1:0] = 0;
+		case(r_size)
+		SZ_16B: fwb_addr[  0] = 0;
+		SZ_32B: fwb_addr[1:0] = 0;
+		SZ_BUS: fwb_addr[WBLSB-1:0] = 0;
+		default: begin end
+		endcase
+	end else begin
+		// fwb_addr = r_addr + fwb_posn;
+		fwb_addr = r_addr;
+
+		case(r_size)
+		SZ_BYTE: begin end
+		SZ_16B: fwb_addr[0] = 0;
+		SZ_32B: fwb_addr[1:0] = 0;
+		SZ_BUS: fwb_addr[WBLSB-1:0] = 0;
+		endcase
 	end
 
 	always @(*)
@@ -527,7 +635,13 @@ module	zipdma_s2mm #(
 			// && (o_wr_stb || !fwb_addr[ADDRESS_WIDTH]) && !r_last)
 	begin
 		assert({ 1'b0, o_wr_addr } == fwb_addr[ADDRESS_WIDTH:WBLSB]);
-		assert(subaddr == fwb_addr[WBLSB-1:0]);
+		case(r_size)
+		SZ_BUS: assert(subaddr == r_addr[WBLSB-1:0]);
+		SZ_16B: assert(subaddr == { fwb_addr[WBLSB-1:1], r_addr[0] });
+		SZ_32B: assert(subaddr == { fwb_addr[WBLSB-1:2], r_addr[1:0] });
+		default:
+			assert(subaddr == fwb_addr[WBLSB-1:0]);
+		endcase
 	end
 
 	always @(*)
@@ -544,7 +658,18 @@ module	zipdma_s2mm #(
 	always @(*)
 	if (!i_reset && o_busy)
 	begin
-		assert(subaddr == r_addr[WBLSB-1:0]);
+		if (!r_inc)
+		case(r_size)
+		SZ_BYTE: begin end
+		SZ_16B: assert(subaddr[0] == 1'b0);
+		SZ_32B: assert(subaddr[1:0] == 2'b00);
+		SZ_BUS: assert(subaddr == 0);
+		endcase else case(r_size)
+		SZ_BYTE: begin end
+		SZ_16B: assert(subaddr[0]   == r_addr[0]);
+		SZ_32B: assert(subaddr[1:0] == r_addr[1:0]);
+		SZ_BUS: assert(subaddr      == r_addr[WBLSB-1:0]);
+		endcase
 	end
 
 	always @(*)
@@ -573,10 +698,53 @@ module	zipdma_s2mm #(
 			assert(!o_wr_cyc);
 			assert(wb_outstanding == 0);
 		end else
+		case(r_size)
+		SZ_BYTE: assert(r_sel == 0);
+		SZ_16B: begin
+			if (OPT_LITTLE_ENDIAN)
+			begin
+				assert(r_sel[DW/8-1:1] == 0);
+			end else begin
+				assert(r_sel[DW/8-2:0] == 0);
+			end
 
-		assert(!(&r_sel));
-		if (subaddr == 0)
-			assert(r_sel == 0);
+			if (!o_wr_stb) begin end
+			else if (subaddr + 2 <= DW/8)
+			begin
+				assert(r_sel == 0);
+			end else if (!r_last)
+			begin
+				assert(r_sel[(OPT_LITTLE_ENDIAN) ? 0 : (DW/8-1)] == (subaddr+2 > DW/8));
+			end else begin
+				assert(r_sel[(OPT_LITTLE_ENDIAN) ? 0 : (DW/8-1)] <= (subaddr+2 > DW/8));
+			end end
+		SZ_32B: begin
+			if (OPT_LITTLE_ENDIAN)
+			begin
+				assert(r_sel[DW/8-1:3] == 0);
+			end else begin
+				assert(r_sel[DW/8-4:0] == 0);
+			end
+
+			if (!o_wr_stb) begin end
+			else if (subaddr + 4 <= DW/8)
+			begin
+				assert(r_sel == 0);
+			/*
+			end else if (!r_last)
+			begin
+				assert($countones(r_sel) == subaddr+4-DW/8);
+			end else begin
+				assert($countones(r_sel) <= subaddr+4-DW/8);
+			*/
+			end end
+		SZ_BUS: begin
+			assert(!(&r_sel));
+			if (subaddr == 0)
+				assert(r_sel == 0);
+			end
+		default: begin end
+		endcase
 
 		if (OPT_LITTLE_ENDIAN)
 		begin
@@ -590,24 +758,59 @@ module	zipdma_s2mm #(
 		for(ik=0; ik<DW/8; ik=ik+1)
 		if (OPT_LITTLE_ENDIAN)
 		begin
-			if (ik >= r_addr[DW/8-1:0])
+			case(r_size)
+			SZ_32B: if (ik > 2)
 				assert(!r_sel[ik]);
-		end else if (ik > 0 && !r_sel[DW/8-ik])
-		begin
-			assert(!r_sel[DW/8-1-ik]);
+			SZ_BUS: if (ik >= r_addr[DW/8-1:0])
+				assert(!r_sel[ik]);
+			default: begin end
+			endcase
+		end else begin
+			if (ik > 0 && !r_sel[DW/8-ik])
+			begin
+				assert(!r_sel[DW/8-1-ik]);
+			end
+
+			case(r_size)
+			SZ_32B: begin
+				/*if (ik >= 4 || subaddr + ik < DW/8
+					|| subaddr + ik - DW/8 >= 4)
+				// assert(!r_sel[subaddr+ik-DW/8]);
+				assert(!r_sel[DW/5-1-ik-subaddr]);
+				*/
+				end
+			SZ_BUS: begin
+				/*
+				if (ik > DW/8-1-i_addr[DW/8-1:0])
+				assert(!r_sel[ik]);
+				*/
+				end
+			default: begin end
+			endcase
 		end
 	end
+
+	always @(*)
+	if (!i_reset && o_busy && !r_inc)
+		assert(r_sel == 0);
 
 	reg	[WBLSB-1:0]	f_sum;
 
 	always @(*)
+	if (r_inc)
 		f_sum = fwb_posn[WBLSB-1:0] + r_addr[WBLSB-1:0];
+	else
+		f_sum = fwb_posn[WBLSB-1:0];
 
 	always @(*)
 	if (!i_reset && o_busy && fwb_posn > 0)
 	begin
-		if (!r_last)
-			assert(f_sum[WBLSB-1:0] == 0);
+		if (!r_last) case(r_size)
+		SZ_16B: assert(f_sum[  0] == 0);
+		SZ_32B: assert(f_sum[1:0] == 0);
+		SZ_BUS: assert(f_sum[WBLSB-1:0] == 0);
+		default: begin end
+		endcase
 	end
 
 	// }}}
@@ -665,9 +868,15 @@ module	zipdma_s2mm #(
 	always @(*)
 	begin
 		fwb_shift = 0;
-		fwb_shift[WBLSB-1:0] = fc_posn[WBLSB-1:0] - fwb_posn[WBLSB-1:0];
-		if (o_wr_stb)
-			fwb_shift[WBLSB-1:0] = fwb_shift[WBLSB-1:0] + fwb_addr[WBLSB-1:0];
+		if (r_inc)
+		begin
+			fwb_shift[WBLSB-1:0] = fc_posn[WBLSB-1:0]
+				- fwb_posn[WBLSB-1:0];
+			if (o_wr_stb)
+				fwb_shift[WBLSB-1:0] = fwb_shift[WBLSB-1:0] + fwb_addr[WBLSB-1:0];
+		end else
+			fwb_shift[WBLSB-1:0] = fc_posn[WBLSB-1:0] - fwb_posn[WBLSB-1:0]
+							+ r_addr[WBLSB-1:0];
 	end
 
 	always @(*)
@@ -733,7 +942,16 @@ module	zipdma_s2mm #(
 
 		if (!o_busy)
 		begin
-			cover(f_posn > DW/8);
+			case({ r_inc, r_size })
+			3'b000: cover(f_posn > DW/8);
+			3'b001: cover(f_posn > DW/8);
+			3'b010: cover(f_posn > DW/8);
+			3'b011: cover(f_posn > DW/8);
+			3'b100: cover(f_posn > DW/8);
+			3'b101: cover(f_posn > DW/8);
+			3'b110: cover(f_posn > DW/8);
+			3'b111: cover(f_posn > DW/8);
+			endcase
 		end
 	end
 
@@ -745,6 +963,14 @@ module	zipdma_s2mm #(
 	////////////////////////////////////////////////////////////////////////
 	//
 	//
+
+	always @(*)
+	case(f_cfg_size)
+	SZ_BYTE: begin end
+	SZ_BUS: begin end
+	SZ_16B: assume(f_cfg_addr[0] == 1'b0);
+	SZ_32B: assume(f_cfg_addr[1:0] == 2'b0);
+	endcase
 
 	// }}}
 `endif

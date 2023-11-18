@@ -118,8 +118,8 @@ module	sata_link #(
 	//
 	//
 
-	(* ASYNC_REG *)	reg		rx_reset_n;
-	(* ASYNC_REG *)	reg	[1:0]	rx_reset_pipe;
+	(* ASYNC_REG="TRUE" *)	reg		rx_reset_n;
+	(* ASYNC_REG="TRUE" *)	reg	[1:0]	rx_reset_pipe;
 
 	always @(posedge i_rx_clk or posedge i_reset)
 	if (i_reset)

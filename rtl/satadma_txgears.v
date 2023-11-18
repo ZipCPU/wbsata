@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	zipdma_txgears.v
+// Filename:	satadma_txgears.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -40,7 +40,7 @@
 //
 `default_nettype none
 // }}}
-module	zipdma_txgears #(
+module	satadma_txgears #(
 		// {{{
 		parameter	BUS_WIDTH = 512,
 		parameter [0:0]	OPT_LITTLE_ENDIAN = 1'b0,

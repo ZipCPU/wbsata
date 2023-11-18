@@ -59,6 +59,8 @@ module	satadma_mm2s #(
 		// {{{
 		input	wire			i_request,
 		output	reg			o_busy, o_err,
+		input	wire			i_inc,
+		input	wire	[1:0]		i_size,
 		input	wire	[LGLENGTH:0]	i_transferlen,
 		input wire [ADDRESS_WIDTH-1:0]	i_addr,	// Byte address
 		// }}}
@@ -100,23 +102,38 @@ module	satadma_mm2s #(
 	reg	[WBLSB:0]	nxtstb_size, rdstb_size, rdack_size, first_size;
 	reg	[ADDRESS_WIDTH-1:0]	next_addr, last_request_addr;
 	reg	[WBLSB-1:0]	subaddr, rdack_subaddr;
-	reg	[DW/8-1:0]	nxtstb_sel, first_sel;
+	reg	[DW/8-1:0]	nxtstb_sel, first_sel, base_sel, ibase_sel;
 	reg	[LGLENGTH:0]	wb_outstanding;
 
 	reg	[WBLSB+1:0]	fill, next_fill;
 
 	reg			m_valid, m_last;
-	reg	[2*DW-1:0]	sreg;
+	reg	[DW-1:0]	sreg;
 	reg	[WBLSB:0]	m_bytes;
 
 	reg	[LGLENGTH:0]	rdstb_len, rdack_len;
 
 	reg	[WBLSB-1:0]	pre_shift;
 	reg	[DW-1:0]	pre_shifted_data;
+
+	reg			r_inc;
+	reg	[1:0]		r_size;
 	// }}}
 
 	assign	o_rd_we = 1'b0;
 	assign	o_rd_data = {(DW){1'b0}};
+
+	// Copy the configuration whenever i_request && !o_busy
+	// {{{
+	always @(posedge i_clk)
+	if (!o_busy && (!OPT_LOWPOWER || i_request))
+	begin
+		r_inc  <= i_inc;
+		r_size <= i_size;
+		// r_transferlen <= i_transferlen;
+		// r_addr <= i_addr;
+	end
+	// }}}
 
 	// nxtstb_size
 	// {{{
@@ -125,7 +142,14 @@ module	satadma_mm2s #(
 		// {{{
 		always @(*)
 		begin
-			first_size = (DW/8)-i_addr[WBLSB-1:0];
+			first_size = 0;
+			case(i_size)
+			SZ_BYTE: first_size = 1;
+			SZ_16B:  first_size = (i_addr[0]) ? 1:2;
+			// Verilator lint_off WIDTH
+			SZ_32B:  first_size = 4 - i_addr[1:0];
+			SZ_BUS:  first_size = (DW/8)-i_addr[WBLSB-1:0];
+			endcase
 
 			if (first_size > i_transferlen)
 				first_size = i_transferlen;
@@ -133,22 +157,39 @@ module	satadma_mm2s #(
 
 		always @(*)
 		begin
-			nxtstb_size = (DW/8);
-			if (DW/8 > rdstb_len - rdstb_size)
-				nxtstb_size =
-					{ 1'b0, rdstb_len[WBLSB:0] }
-					-{ 1'b0, rdstb_size[WBLSB:0]};
-			// if (o_rd_stb && nxtstb_size > (DW/8)-subaddr)
-			//	nxtstb_size = (DW/8)-subaddr;
+			nxtstb_size = rdstb_size;
+
+			case(r_size)
+			SZ_BYTE: nxtstb_size = 1;
+			SZ_16B: nxtstb_size = (rdstb_len == 3) ? 1 : 2;
+			// Verilator lint_off WIDTH
+			SZ_32B: nxtstb_size = (rdstb_len >= 4 && rdstb_len < 8)
+						? (rdstb_len - 4) : 4;
+			SZ_BUS: begin
+				nxtstb_size = (DW/8);
+				if (DW/8 > rdstb_len - rdstb_size)
+					nxtstb_size =
+						{ 1'b0, rdstb_len[WBLSB:0] }
+						-{ 1'b0, rdstb_size[WBLSB:0]};
+				// if (o_rd_stb && nxtstb_size > (DW/8)-subaddr)
+				//	nxtstb_size = (DW/8)-subaddr;
+				end
+			// Verilator lint_on  WIDTH
 			endcase
 		end
 		// }}}
-	end else begin
+	end else begin : STD_NXTSTB_SIZE
 		// {{{
 		always @(*)
 		begin
+			first_size = 0;
+			case(i_size)
+			SZ_BYTE: first_size = 1;
+			SZ_16B:  first_size = (i_addr[0]) ? 1:2;
 			// Verilator lint_off WIDTH
-			first_size = (DW/8)-i_addr[WBLSB-1:0];
+			default:
+				first_size = (DW/8)-i_addr[WBLSB-1:0];
+			endcase
 
 			if (first_size > i_transferlen)
 				first_size = i_transferlen;
@@ -159,12 +200,19 @@ module	satadma_mm2s #(
 		begin
 			nxtstb_size = rdstb_size;
 
-			// Verilator lint_off WIDTH
-			nxtstb_size = (DW/8);
-			if (DW/8 > rdstb_len - rdstb_size)
-				nxtstb_size = { 1'b0, rdstb_len[WBLSB:0] }
-					-{ 1'b0, rdstb_size[WBLSB:0]};
-			// Verilator lint_on  WIDTH
+			casez(r_size)
+			SZ_BYTE: nxtstb_size = 1;
+			SZ_16B: nxtstb_size = (rdstb_len == 3) ? 1 : 2;
+			default: begin
+				// Verilator lint_off WIDTH
+				nxtstb_size = (DW/8);
+				if ((rdstb_len[LGLENGTH:WBLSB+1] == 0)
+					    &&(rdstb_size + DW/8 > rdstb_len[WBLSB:0]))
+					nxtstb_size =
+						{ 1'b0, rdstb_len[WBLSB:0] }
+						-{ 1'b0, rdstb_size[WBLSB:0]};
+				end
+				// Verilator lint_on  WIDTH
 			endcase
 		end
 		// }}}
@@ -286,23 +334,141 @@ module	satadma_mm2s #(
 	// o_rd_sel
 	// {{{
 
+	// ibase_sel
+	generate if (BUS_WIDTH > 32)
+	begin : GEN_STRB
+		// {{{
+		always @(*)
+		begin
+			ibase_sel = 0;
+
+			if (OPT_LITTLE_ENDIAN)
+			begin
+				// {{{
+				// Verilator coverage_off
+				case(i_size)
+				SZ_BYTE: ibase_sel = {{(DW/8-1){1'b0}}, 1'b1} << i_addr[WBLSB-1:0];
+				SZ_16B: ibase_sel = {{(DW/8-2){1'b0}}, 2'h3} << {i_addr[WBLSB-1:1], 1'b0 };
+				SZ_32B: ibase_sel = {{(DW/8-4){1'b0}}, 4'b1111} << {i_addr[WBLSB-1:2], 2'b0 };
+				SZ_BUS: ibase_sel = {(DW/8){1'b1}};
+				endcase
+				// Verilator coverage_on
+				// }}}
+			end else begin
+				// {{{
+				case(i_size)
+				SZ_BYTE: ibase_sel= {1'h1, {(DW/8-1){1'b0}} } >> i_addr[WBLSB-1:0];
+				SZ_16B: ibase_sel = {2'h3, {(DW/8-2){1'b0}} } >> {i_addr[WBLSB-1:1], 1'b0 };
+				SZ_32B: ibase_sel = {4'hf, {(DW/8-4){1'b0}} } >> {i_addr[WBLSB-1:2], 2'b0 };
+				SZ_BUS: ibase_sel = {(DW/8){1'b1}};
+				endcase
+				// }}}
+			end
+		end
+		// }}}
+	end else begin : MIN_STRB
+		// {{{
+		always @(*)
+		begin
+			ibase_sel = 0;
+
+			if (OPT_LITTLE_ENDIAN)
+			begin
+				// {{{
+				// Verilator coverage_off
+				case(i_size)
+				SZ_BYTE: ibase_sel = {{(DW/8-1){1'b0}}, 1'b1} << i_addr[WBLSB-1:0];
+				SZ_16B: ibase_sel = {{(DW/8-2){1'b0}}, 2'h3} << {i_addr[WBLSB-1:1], 1'b0 };
+				default: ibase_sel = {(DW/8){1'b1}};
+				endcase
+				// Verilator coverage_on
+				// }}}
+			end else begin
+				// {{{
+				case(i_size)
+				SZ_BYTE: ibase_sel= {1'h1, {(DW/8-1){1'b0}} } << i_addr[WBLSB-1:0];
+				SZ_16B: ibase_sel = {2'h3, {(DW/8-2){1'b0}} } << {i_addr[WBLSB-1:1], 1'b0 };
+				default: ibase_sel = {(DW/8){1'b1}};
+				endcase
+				// }}}
+			end
+		end
+		// }}}
+	end endgenerate
+
+	always @(posedge i_clk)
+	if (i_reset || (o_rd_cyc && i_rd_err))
+	begin
+		// {{{
+		base_sel <= 0;
+		// }}}
+	end else if (!o_busy)
+	begin
+		base_sel <= 0;
+		if (i_request || !OPT_LOWPOWER)
+			base_sel <= ibase_sel;
+	end else if (o_rd_stb && !i_rd_stall)
+		base_sel <= nxtstb_sel;
+
 	// nxtstb_sel
 	// {{{
-	always @(*)
-	if (OPT_LITTLE_ENDIAN)
-	begin
-		nxtstb_sel = ((1<<nxtstb_size)-1) << next_addr[WBLSB-1:0];
-	end else begin
-		// Verilator lint_off WIDTH
-		nxtstb_sel = (((1<<nxtstb_size)-1) << (DW/8 - nxtstb_size))
-					>> next_addr[WBLSB-1:0];
-		// Verilator lint_on  WIDTH
-	end
+	generate if (DW == 32)
+	begin : GEN_NXTSTB_SEL
+		// {{{
+		always @(*)
+		if (OPT_LITTLE_ENDIAN)
+		begin
+			case(r_size)
+			SZ_BYTE: nxtstb_sel = { base_sel[DW/8-2:0], base_sel[DW/8-1] };
+			SZ_16B:  nxtstb_sel = { base_sel[DW/8-3:0], base_sel[DW/8-1:DW/8-2] };
+			default:
+				nxtstb_sel = {(DW/8){1'b1}};
+			endcase
+
+			if (!r_inc)
+				nxtstb_sel = base_sel;
+		end else begin
+			case(r_size)
+			SZ_BYTE: nxtstb_sel = { base_sel[0:0], base_sel[DW/8-1:1] };
+			SZ_16B:  nxtstb_sel = { base_sel[1:0], base_sel[DW/8-1:2] };
+			default:
+				nxtstb_sel = {(DW/8){1'b1}};
+			endcase
+
+			if (!r_inc)
+				nxtstb_sel = base_sel;
+		end
+		// }}}
+	end else begin : GEN_WIDE_NXTSTB_SEL
+		always @(*)
+		if (OPT_LITTLE_ENDIAN)
+		begin
+			case(r_size)
+			SZ_BYTE: nxtstb_sel = { base_sel[DW/8-2:0], base_sel[DW/8-1] };
+			SZ_16B:  nxtstb_sel = { base_sel[DW/8-3:0], base_sel[DW/8-1:DW/8-2] };
+			SZ_32B:  nxtstb_sel = { base_sel[DW/8-5:0], base_sel[DW/8-1:DW/8-4] };
+			SZ_BUS:  nxtstb_sel = {(DW/8){1'b1}};
+			endcase
+
+			if (!r_inc)
+				nxtstb_sel = base_sel;
+		end else begin
+			case(r_size)
+			SZ_BYTE: nxtstb_sel = { base_sel[0:0], base_sel[DW/8-1:1] };
+			SZ_16B:  nxtstb_sel = { base_sel[1:0], base_sel[DW/8-1:2] };
+			SZ_32B:  nxtstb_sel = { base_sel[3:0], base_sel[DW/8-1:4] };
+			SZ_BUS:  nxtstb_sel = {(DW/8){1'b1}};
+			endcase
+
+			if (!r_inc)
+				nxtstb_sel = base_sel;
+		end
+	end endgenerate
 	// }}}
 
 	// first_sel
 	generate if (BUS_WIDTH > 32)
-	begin : GEN_STRB
+	begin : GEN_FIRST_SEL
 		// {{{
 		always @(*)
 		begin
@@ -312,15 +478,38 @@ module	satadma_mm2s #(
 			begin
 				// {{{
 				// Verilator coverage_off
-				first_sel = {(DW/8){1'b1}} << i_addr[WBLSB-1:0];
+				case(i_size)
+				SZ_BYTE: first_sel = {{(DW/8-1){1'b0}}, 1'b1} << i_addr[WBLSB-1:0];
+				SZ_16B: first_sel = {{(DW/8-2){1'b0}}, 1'b1,i_addr[0]} << {i_addr[WBLSB-1:1], 1'b0 };
+				SZ_32B: case(i_addr[1:0])
+					2'b00: first_sel = {{(DW/8-4){1'b0}}, 4'b1111} << {i_addr[WBLSB-1:2], 2'b0 };
+					2'b01: first_sel = {{(DW/8-4){1'b0}}, 4'b1110} << {i_addr[WBLSB-1:2], 2'b0 };
+					2'b10: first_sel = {{(DW/8-4){1'b0}}, 4'b1100} << {i_addr[WBLSB-1:2], 2'b0 };
+					2'b11: first_sel = {{(DW/8-4){1'b0}}, 4'b1000} << {i_addr[WBLSB-1:2], 2'b0 };
+					endcase
+				SZ_BUS: first_sel = {(DW/8){1'b1}} << i_addr[WBLSB-1:0];
+				endcase
 				// Verilator coverage_on
 				// }}}
 			end else begin
-				first_sel = {(DW/8){1'b1}} >> i_addr[WBLSB-1:0];
+				// {{{
+				case(i_size)
+				SZ_BYTE: first_sel = {1'b1, {(DW/8-1){1'b0}} } >> i_addr[WBLSB-1:0];
+				SZ_16B: first_sel = {i_addr[0], 1'b1, {(DW/8-2){1'b0}} }
+						>> {i_addr[WBLSB-1:1], 1'b0 };
+				SZ_32B: case(i_addr[1:0])
+					2'b00: first_sel = {4'b1111, {(DW/8-4){1'b0}} } >> {i_addr[WBLSB-1:2], 2'b0 };
+					2'b01: first_sel = {4'b0111, {(DW/8-4){1'b0}} } >> {i_addr[WBLSB-1:2], 2'b0 };
+					2'b10: first_sel = {4'b0011, {(DW/8-4){1'b0}} } >> {i_addr[WBLSB-1:2], 2'b0 };
+					2'b11: first_sel = {4'b0001, {(DW/8-4){1'b0}} } >> {i_addr[WBLSB-1:2], 2'b0 };
+					endcase
+				SZ_BUS: first_sel = {(DW/8){1'b1}} >> i_addr[WBLSB-1:0];
+				endcase
+				// }}}
 			end
 		end
 		// }}}
-	end else begin : MIN_STRB
+	end else begin : MIN_FIRST_SEL
 		// {{{
 		always @(*)
 		begin
@@ -329,7 +518,10 @@ module	satadma_mm2s #(
 			if (OPT_LITTLE_ENDIAN)
 			begin
 				// {{{
-				case(i_addr[1:0])
+				casez(i_size)
+				SZ_BYTE: first_sel = 4'b0001 << i_addr[WBLSB-1:0];
+				SZ_16B: first_sel = 4'b0011 << {i_addr[WBLSB-1:1], 1'b0 };
+				default: case(i_addr[1:0])
 					2'b00: first_sel = 4'b1111;
 					2'b01: first_sel = 4'b1110;
 					2'b10: first_sel = 4'b1100;
@@ -339,11 +531,16 @@ module	satadma_mm2s #(
 				// }}}
 			end else begin
 				// {{{
-				case(i_addr[1:0])
-				2'b00: first_sel = 4'b1111;
-				2'b01: first_sel = 4'b0111;
-				2'b10: first_sel = 4'b0011;
-				2'b11: first_sel = 4'b0001;
+				casez(i_size)
+				SZ_BYTE: first_sel = 4'b1000 >> i_addr[WBLSB-1:0];
+				SZ_16B: first_sel = 4'b1100
+						>> {i_addr[WBLSB-1:1], 1'b0 };
+				default: case(i_addr[1:0])
+					2'b00: first_sel = 4'b1111;
+					2'b01: first_sel = 4'b0111;
+					2'b10: first_sel = 4'b0011;
+					2'b11: first_sel = 4'b0001;
+					endcase
 				endcase
 				// }}}
 			end
@@ -394,13 +591,23 @@ module	satadma_mm2s #(
 	end else if (i_rd_ack)
 	begin
 		// Verilator lint_off WIDTH
-		rdack_subaddr <= rdack_subaddr + rdack_size;
+		if (r_inc)
+			rdack_subaddr <= rdack_subaddr + rdack_size;
+		else case(r_size)
+		SZ_BYTE: begin end
+		SZ_16B: rdack_subaddr[  0] <= 1'b0;
+		SZ_32B: rdack_subaddr[1:0] <= 2'b0;
+		SZ_BUS: rdack_subaddr[WBLSB-1:0] <= {(WBLSB){1'b0}};
+		endcase
 		// Verilator lint_on  WIDTH
 	end
 	// }}}
 
 	// rdack_len
 	// {{{
+	// Total length remaining, from the perspective of the bus return.
+	// Hence, on any bus return, we drop by the number of bytes valid
+	// in that return, or minus rdack_size.
 	always @(posedge i_clk)
 	if (!o_busy)
 	begin
@@ -423,11 +630,15 @@ module	satadma_mm2s #(
 			rdack_size <= first_size;
 	end else if (i_rd_ack)
 	begin
+		case(r_size)
+		SZ_BYTE:rdack_size <= 1;
+		SZ_16B: rdack_size <= 2;
+		SZ_32B: rdack_size <= 4;
 		// Verilator lint_off WIDTH
-		if (rdack_len > DW/8 + rdack_size)
-			rdack_size <= DW/8;
-		else
-			rdack_size <= rdack_len - rdack_size;
+		SZ_BUS: if (rdack_len > DW/8 + rdack_size)
+				rdack_size <= DW/8;
+			else
+				rdack_size <= rdack_len - rdack_size;
 		// Verilator lint_on  WIDTH
 		endcase
 	end
@@ -463,8 +674,8 @@ module	satadma_mm2s #(
 		if ((!m_valid || !m_last) && rdack_len == 0 && fill > 0)
 			m_valid <= 1;
 		else if (o_rd_cyc && i_rd_ack)
-			m_valid <= ((next_fill >= DW/8)
-			|| (rdack_len <= { {(LGLENGTH-1){1'b0}}, rdack_size }));
+			m_valid <= 1'b1; // ((next_fill >= DW/8)
+			// || (rdack_len <= { {(LGLENGTH-1){1'b0}}, rdack_size }));
 		// Verilator lint_on  WIDTH
 	end
 	// }}}
@@ -475,11 +686,29 @@ module	satadma_mm2s #(
 	always @(posedge i_clk)
 	if (!o_busy)
 	begin
+		pre_shift <= 0;
 		if (!OPT_LOWPOWER || i_request)
 			pre_shift <= i_addr[WBLSB-1:0];
 	end else if (o_rd_cyc && i_rd_ack)
 	begin
-		pre_shift <= 0;
+		case(r_size)
+		SZ_BYTE: pre_shift <= pre_shift + (r_inc ? 1 : 0);
+		SZ_16B:  begin
+			// {{{
+			pre_shift <= pre_shift + (r_inc ? 2 : 0);
+			pre_shift[0] <= 1'b0;
+			end
+			// }}}
+		SZ_32B:  begin
+			// {{{
+			// Verilator lint_off WIDTH
+			pre_shift <= pre_shift + (r_inc ? 4 : 0);
+			// Verilator lint_on  WIDTH
+			pre_shift[1:0] <= 2'b0;
+			end
+			// }}}
+		SZ_BUS:  pre_shift <= 0;
+		endcase
 	end
 
 	always @(*)
@@ -496,31 +725,13 @@ module	satadma_mm2s #(
 	begin
 		// {{{
 		// Verilator lint_off WIDTH
-		if (OPT_LITTLE_ENDIAN)
-		begin
-			// {{{
-			if (m_valid)
-				sreg <= { {(DW){1'b0}}, sreg[2*DW-1:DW] }
-					| (pre_shifted_data << ((fill-DW/8)*8));
-			else
-				sreg <= sreg | (i_rd_data << (fill * 8));
-			// }}}
-		end else begin
-			if (m_valid)
-				sreg <= (sreg << DW)
-					| ({ pre_shifted_data, {(DW){1'b0}} } >> ((fill-DW/8)*8));
-			else
-				sreg <= sreg | ({ pre_shifted_data, {(DW){1'b0}} } >> (fill * 8));
-		end
+		sreg <= pre_shifted_data;
 		// Verilator lint_on  WIDTH
 		// }}}
 	end else if (m_valid)
 	begin
 		// {{{
-		if (OPT_LITTLE_ENDIAN)
-			sreg <= { {(DW){1'b0}}, sreg[2*DW-1:DW] };
-		else
-			sreg <= { sreg[DW-1:0], {(DW){1'b0}} };
+		sreg <= {(DW){1'b0}};
 		// }}}
 	end
 	// }}}
@@ -553,7 +764,11 @@ module	satadma_mm2s #(
 	// {{{
 	always @(*)
 	begin
-		last_request_addr = i_addr + i_transferlen - 1;
+		last_request_addr = i_addr;
+		if (r_inc)
+			// Verilator lint_off WIDTH
+			last_request_addr = i_addr + i_transferlen - 1;
+			// Verilator lint_on  WIDTH
 	end
 
 	initial	m_last = 0;
@@ -562,7 +777,12 @@ module	satadma_mm2s #(
 	begin
 		m_last <= 1'b0;
 		if (!OPT_LOWPOWER || i_request)
-			m_last <= (last_request_addr[ADDRESS_WIDTH-1:WBLSB] != i_addr[ADDRESS_WIDTH-1:WBLSB]);
+		case(i_size)
+		SZ_BYTE: m_last <= (i_transferlen <= 1);
+		SZ_16B: m_last <= (last_request_addr[ADDRESS_WIDTH-1:1] != i_addr[ADDRESS_WIDTH-1:1]);
+		SZ_32B: m_last <= (last_request_addr[ADDRESS_WIDTH-1:2] != i_addr[ADDRESS_WIDTH-1:2]);
+		SZ_BUS: m_last <= (last_request_addr[ADDRESS_WIDTH-1:WBLSB] != i_addr[ADDRESS_WIDTH-1:WBLSB]);
+		endcase
 	end else if (i_rd_ack)
 	begin
 		// Verilator lint_off WIDTH
@@ -573,7 +793,7 @@ module	satadma_mm2s #(
 	// }}}
 
 	assign	M_VALID = m_valid;
-	assign	M_DATA = (OPT_LITTLE_ENDIAN) ? sreg[DW-1:0] : sreg[2*DW-1:DW];
+	assign	M_DATA = sreg;
 	assign	M_BYTES= m_bytes;
 	assign	M_LAST = m_last;
 
@@ -600,6 +820,8 @@ module	satadma_mm2s #(
 	localparam	F_LGCOUNT = LGLENGTH+1;
 	reg	f_past_valid;
 	wire	[F_LGDEPTH-1:0]	fwb_nreqs, fwb_nacks, fwb_outstanding;
+	(* anyconst *)	reg		f_cfg_inc;
+	(* anyconst *)	reg	[1:0]	f_cfg_size;
 	(* anyconst *)	reg	[ADDRESS_WIDTH-1:0]	f_cfg_addr;
 	(* anyconst *)	reg	[LGLENGTH:0]		f_cfg_len;
 	reg	[F_LGCOUNT-1:0]	f_rcvd, f_sent;
@@ -631,6 +853,8 @@ module	satadma_mm2s #(
 	end else if ($past(o_busy && i_request))
 	begin
 		assume(i_request);
+		assume($stable(i_inc));
+		assume($stable(i_size));
 		assume($stable(i_addr));
 		assume($stable(i_transferlen));
 	end
@@ -646,10 +870,14 @@ module	satadma_mm2s #(
 	always @(*)
 	if (i_request && !o_busy)
 	begin
+		assume(i_inc  == f_cfg_inc);
+		assume(i_size == f_cfg_size);
 		assume(i_addr == f_cfg_addr);
 		assume(i_transferlen == f_cfg_len);
 	end else if (o_busy)
 	begin
+		assert(r_inc  == f_cfg_inc);
+		assert(r_size == f_cfg_size);
 		assert(r_addr == f_cfg_addr);
 		assert(r_transferlen == f_cfg_len);
 	end
@@ -696,7 +924,16 @@ module	satadma_mm2s #(
 
 	always @(*)
 	if (f_past_valid && o_rd_stb)
+	begin
 		assert(o_rd_sel != 0);
+
+		case(i_size)
+		SZ_BYTE:assert($countones(o_rd_sel) == 1);
+		SZ_16B: assert($countones(o_rd_sel) <= 2);
+		SZ_32B: assert($countones(o_rd_sel) <= 4);
+		default: begin end
+		endcase
+	end
 
 	always @(*)
 	if (f_past_valid && o_rd_cyc)
@@ -711,9 +948,19 @@ module	satadma_mm2s #(
 	else if (o_rd_cyc && i_rd_ack)
 	begin
 		if (f_rcvd == 0)
-			f_rcvd <= f_rcvd + (DW/8 - i_addr[WBLSB-1:0]);
-		else
-			f_rcvd <= f_rcvd + DW/8;
+		begin
+			case(i_size)
+			SZ_BYTE: f_rcvd <= f_rcvd + 1;
+			SZ_16B:  f_rcvd <= f_rcvd + (2 - i_addr[  0]);
+			SZ_32B:  f_rcvd <= f_rcvd + (4 - i_addr[1:0]);
+			SZ_BUS:  f_rcvd <= f_rcvd + (DW/8 - i_addr[WBLSB-1:0]);
+			endcase
+		end else case(i_size)
+		SZ_BYTE: f_rcvd <= f_rcvd + 1;
+		SZ_16B:  f_rcvd <= f_rcvd + 2;
+		SZ_32B:  f_rcvd <= f_rcvd + 4;
+		SZ_BUS:  f_rcvd <= f_rcvd + DW/8;
+		endcase
 	end
 	// }}}
 
@@ -721,10 +968,20 @@ module	satadma_mm2s #(
 	// {{{
 	always @(*)
 	begin
-		f_ack_size = DW/8;
+		case(i_size)
+		SZ_BYTE: f_ack_size = 1;
+		SZ_16B:  f_ack_size = 2;
+		SZ_32B:  f_ack_size = 4;
+		SZ_BUS:  f_ack_size = DW/8;
+		endcase
 
 		if (f_rcvd == 0)
-			f_ack_size = (DW/8-i_addr[WBLSB-1:0]);
+		case(i_size)
+		SZ_BYTE: f_ack_size =   1;
+		SZ_16B:  f_ack_size =  (2 - i_addr[  0]);
+		SZ_32B:  f_ack_size =  (4 - i_addr[1:0]);
+		SZ_BUS:  f_ack_size = (DW/8-i_addr[WBLSB-1:0]);
+		endcase
 
 		if (f_rcvd + f_ack_size > i_transferlen)
 			f_ack_size = i_transferlen - f_rcvd;

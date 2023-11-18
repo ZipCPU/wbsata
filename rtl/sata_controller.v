@@ -293,7 +293,8 @@ module	sata_controller #(
 	// {{{
 	//
 	// The PHY layer is maintained elsewhere, so it can be included from
-	// the top level.  (Main and below are simulable with Verilator, other
-	// top level components are not.)
+	// the top level.  (Main and below are intended to be hardware
+	// indeepndent and simulable with Verilator, other top level components
+	// are not designed with this intention.)
 	// }}}
 endmodule

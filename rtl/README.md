@@ -4,6 +4,13 @@
   - [`sata_transport`](sata_transport.v)
     - [sfifo](sfifo.v): Basic synchronous FIFO
     - [afifo](afifo.v): Basic asynchronous FIFO
+    - [`satatrn_fsm`](satatrn_fsm.v): 
+    - [`satatrn_rxregfis`](satatrn_rxregfis.v): Selects between control FIS's, to go to the FSM, and DATA FIS's to be sent to the DMA
+    - [`satatrn_txarb`](satatrn_txarb.v): Selects between control and data FIS's to be sent
+    - [`satadma_mm2s`](satadma_mm2s.v): Memory to device DMA
+    - [`satadma_rxgears`](satadma_rxgears.v): Packs 32b words into bus sized words
+    - [`satadma_txgears`](satadma_txgears.v): Unpacks bus sized words into 32b words
+    - [`satadma_s2mm`](satadma_s2mm.v): Device to memory DMA
   - [`sata_link`](sata_link.v)
     - [`satalnk_rmcont`](satalnk_rmcont.v)
     - [afifo](afifo.v): Basic asynchronous FIFO

@@ -46,11 +46,13 @@
 // }}}
 module	sata_transport #(
 		// {{{
+		parameter	DW = 32, AW=30,
 		// Verilator lint_off UNUSED
 		parameter [0:0]	OPT_LOWPOWER = 1'b0,
 				OPT_LITTLE_ENDIAN = 1'b0,
 		// Verilator lint_on  UNUSED
-		parameter	LGFIFO = 12
+		parameter	LGFIFO = 12,
+		parameter	LGAFIFO=  4
 		// }}}
 	) (
 		// {{{
@@ -72,7 +74,7 @@ module	sata_transport #(
 		// }}}
 		// Wishbone DMA interface
 		// {{{
-		output	wire		o_dma_cyc, o_wb_stb, o_wb_we,
+		output	wire		o_dma_cyc, o_dma_stb, o_dma_we,
 		output	wire [AW-1:0]	o_dma_addr,
 		output	wire [DW-1:0]	o_dma_data,
 		output	wire [DW/8-1:0]	o_dma_sel,
@@ -80,6 +82,7 @@ module	sata_transport #(
 		input	wire		i_dma_stall,
 		input	wire		i_dma_ack,
 		input	wire	[31:0]	i_dma_data,
+		input	wire		i_dma_err,
 		// }}}
 		// Link layer interface
 		// {{{
@@ -109,352 +112,477 @@ module	sata_transport #(
 
 	// Local declarations
 	// {{{
-	localparam	[2:0]	ADR_CONTROL = 3'h0,
-				ADR_DMAWR   = 3'h5,
-				ADR_DMARD   = 3'h6,
-				ADR_DMALN   = 3'h7;
+	localparam	[0:0]	DMA_INC= 1'b1;
+	localparam	[1:0]	SZ_BUS = 2'b00, SZ_32B = 2'b01;
+	localparam	ADDRESS_WIDTH=AW+$clog2(DW/8);
+	localparam	[$clog2(DW/8):0]	GEAR_32BYTES = 4;
+	localparam	LGLENGTH=11;
 
-	reg			tx_active;
-	wire			tx_write, tx_read,
-				tx_full, tx_empty;
-	wire	[4:0]		tx_fill;
+	reg		phy_reset_n;
+	reg	[1:0]	phy_reset_xpipe;
+	wire		rxdma_reset, txdma_reset;
+	(* ASYNC_REG="TRUE" *)
+	reg		rx_reset_phyclk, tx_reset_phyclk;
+	(* ASYNC_REG="TRUE" *)
+	reg	[1:0]	rx_reset_xpipe,  tx_reset_xpipe;
 
-	wire			rx_read, rx_empty, rx_full;
-	reg			tran_full;
-	wire	[4:0]		rx_fill;
-	wire	[31:0]		rx_data;
 
-	wire	[31:0]	cfg_word;
-	reg		cfg_success, cfg_failed, cfg_link_err;
-	reg	[31:0]	shadow_0, shadow_1, shadow_2, shadow_3, shadow_4;
-
-	wire		s2mm_cyc, s2mm_stb, s2mm_we,
-			s2mm_ack, s2mm_stall, s2mm_err;
-	wire		mm2s_cyc, mm2s_stb, mm2s_we,
-			mm2s_ack, mm2s_stall, mm2s_err;
+	wire			s2mm_cyc, s2mm_stb, s2mm_we,
+				s2mm_ack, s2mm_stall, s2mm_err;
+	wire			mm2s_cyc, mm2s_stb, mm2s_we,
+				mm2s_ack, mm2s_stall, mm2s_err;
 	wire	[AW-1:0]	s2mm_addr, mm2s_addr;
-	wire	[DW-1:0]	s2mm_data, mm2s_data;
+	wire	[DW-1:0]	s2mm_data, mm2s_bus_data;
 	wire	[DW/8-1:0]	s2mm_sel, mm2s_sel;
+
+	wire			s2mm_core_request, s2mm_core_busy,s2mm_core_err;
+	wire	[ADDRESS_WIDTH-1:0]	s2mm_core_addr, mm2s_core_addr;
+	wire			mm2s_core_request, mm2s_core_busy,mm2s_core_err;
+
+	wire		ign_s2mm_inc,  ign_mm2s_inc;
+	wire	[1:0]	ign_s2mm_size, ign_mm2s_size;
+
+	wire		rxgear_valid, rxgear_ready, rxgear_last,
+			ign_rxgear_bytes_msb;
+	wire		txgear_valid, txgear_ready, txgear_last;
+	wire	[DW-1:0]	rxgear_data,  txgear_data;
+	wire [$clog2(DW/8)-1:0]	rxgear_bytes;
+	wire [$clog2(DW/8):0]	txgear_bytes;
+
+	wire			rxfifo_full, rx_afifo_empty;
+	wire	[1+$clog2(DW/8)+DW-1:0]	rx_afifo_data;
+	wire	[LGFIFO:0]	ign_rxfifo_fill;
+	wire		rxfifo_valid, rxfifo_ready, rxfifo_last, rxfifo_empty;
+	wire	[$clog2(DW/8)-1:0]	rxfifo_bytes;
+	wire	[DW-1:0]		rxfifo_data;
+
+	wire			mm2s_valid, mm2s_ready, mm2s_last;
+	wire	[DW-1:0]	mm2s_data;
+	wire [$clog2(DW/8):0]	mm2s_bytes;
+
+	wire			mm2sgear_valid, mm2sgear_ready, mm2sgear_last,
+				ign_mm2sgear_bytes_msb;
+	wire	[DW-1:0]	mm2sgear_data;
+	wire [$clog2(DW/8)-1:0]	mm2sgear_bytes;
+
+	wire			txfifo_full, txfifo_empty, txfifo_last;
+	wire	[DW-1:0]	txfifo_data;
+	wire [$clog2(DW/8)-1:0]	txfifo_bytes;
+	wire	[LGFIFO:0]	ign_txfifo_fill;
+
+	wire			tx_afifo_full, tx_afifo_rd, tx_afifo_last,
+				tx_afifo_empty;
+	wire	[DW-1:0]	tx_afifo_data;
+	wire [$clog2(DW/8)-1:0]	tx_afifo_bytes;
+
+	wire			fis_valid, fis_last;
+	wire	[31:0]		fis_data;
+
+	reg	tx_gate;
+
+	wire		datarx_valid, datarx_last, ign_datarx_ready;
+	wire	[31:0]	datarx_data;
+
+	// Verilator lint_off UNUSED
+	wire			tran_request, tranreq_src;
+	wire	[LGLENGTH:0]	tranreq_len;
+	// Verilator lint_on  UNUSED
+	wire		regtx_valid, regtx_ready, regtx_last;
+	wire	[31:0]	regtx_data;
+
+
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
-	// Transmit: Host to device logic
+	// Reset CDC
+	// {{{
+
+	always @(posedge i_phy_clk or posedge i_reset)
+	if (!i_reset)
+		{ phy_reset_n, phy_reset_xpipe } <= -1;
+	else
+		{ phy_reset_n, phy_reset_xpipe } <= { phy_reset_xpipe,!i_reset};
+
+	assign	rxdma_reset = !(s2mm_core_request || s2mm_core_busy);
+	always @(posedge i_phy_clk)
+		{ rx_reset_phyclk, rx_reset_xpipe }
+					<= { rx_reset_xpipe, rxdma_reset };
+
+	assign	txdma_reset = !(mm2s_core_request || mm2s_core_busy);
+	always @(posedge i_phy_clk)
+		{ tx_reset_phyclk, tx_reset_xpipe }
+					<= { tx_reset_xpipe, txdma_reset };
+
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// FSM master Controller / sequencer
 	// {{{
 	////////////////////////////////////////////////////////////////////////
 	//
 	//
 
-	reg		txphy_reset_n, tx_reset_n;
-	reg	[1:0]	txphy_reset_pipe, tx_reset_pipe;
-
-	reg		tx_request, txphy_request, txphy_request_pipe;
-	reg		tx_ack, tx_ack_pipe, txphy_ack;
-
-	wire		tx_fifo_read, sfifo_last;
-	wire	[31:0]	tx_fifo_data;
-	wire		tx_fifo_empty;
-
-	generate if (OPT_DMA)
-	begin : GEN_TX_DMA
-		satadma_mm2s #(
-		) u_mm2s (
-		);
-
-		satadma_rxgears #(
-		) u_rxgears (
-		);
-
-		sfifo #(
-			.BW(33), .LGFLEN(LGFIFO)
-		) tx_fifo (
-			// {{{
-			.i_clk(i_clk), .i_reset(!tx_reset_n),
-			//
-			.i_wr(tx_write), .i_data({
-				i_wb_addr[0],
-				i_wb_data[7:0], i_wb_data[15:8],
-				i_wb_data[23:16], i_wb_data[31:24] }),
-				.o_full(tx_full), .o_fill(tx_fill),
-			//
-			.i_rd(tx_fifo_read), .o_data({ sfifo_last, tx_fifo_data }),
-				.o_empty(tx_fifo_empty)
-			// }}}
-		);
-
-		satadma_txgears #(
-		) u_txgears (
-		);
-
-		afifo #(
-			.WIDTH(33), .LGFIFO(LGFIFO)
-		) tx_afifo (
-			// {{{
-			.i_wclk(i_clk), .i_wr_reset_n(tx_reset_n),
-			//
-			.i_wr(tx_fifo_read), .i_wr_data({ sfifo_last, tx_fifo_data }),
-				.o_wr_full(tx_full),
-			//
-			.i_rclk(i_phy_clk), .i_rd_reset_n(txphy_reset_n),
-			.i_rd(tx_read), .o_rd_data({ o_tran_last, o_tran_data }),
-				.o_rd_empty(tx_empty)
-			// }}}
-		);
-
-	end else begin : NO_TX_DMA
+	satatrn_rxregfis
+	u_rxregfis(
 		// {{{
-		// tx_request
+		.i_clk(i_clk), .i_reset(i_reset), .i_phy_clk(i_phy_clk),
+			.i_phy_reset_n(phy_reset_n), .i_link_err(i_link_err),
+		//
+		.i_valid(i_tran_valid),
+		.i_data(i_tran_data),
+		.i_last(i_tran_last),
+		// .i_abort(i_tran_abort),
+		//
+		.o_reg_valid(fis_valid),
+		.o_reg_data(fis_data),
+		.o_reg_last(fis_last),
+		//
+		.o_data_valid(datarx_valid),
+		.o_data_data(datarx_data),
+		.o_data_last(datarx_last)
+		// }}}
+	);
+
+	sata_fsm #(
+		.ADDRESS_WIDTH(ADDRESS_WIDTH), .DW(DW), .LGLENGTH(LGLENGTH)
+	) u_fsm (
+		.i_clk(i_clk), .i_reset(i_reset),
+		// Wishbone control inputs
 		// {{{
-		always @(posedge i_clk)
-		if (i_reset || !tx_reset_n)
-			tx_request <= 0;
-		else if (tx_write && i_wb_addr == ADR_TXLAST)
-			tx_request <= 1;
-		else if (tx_ack)
-			tx_request <= 0;
+		.i_wb_cyc(i_wb_cyc),	.i_wb_stb(i_wb_stb),
+		.i_wb_we(i_wb_we),	.i_wb_addr(i_wb_addr),
+		.i_wb_data(i_wb_data),	.i_wb_sel(i_wb_sel),
+		.o_wb_stall(o_wb_stall),.o_wb_ack(o_wb_ack),
+		.o_wb_data(o_wb_data),
 		// }}}
-
-		// txphy_request, txphy_request_pipe
+		// .i_link_up
+		// .o_link_reset _request
+		//
+		.o_tran_req(tran_request),
+		.i_tran_busy(tran_request), // tranreq_busy),
+		.i_tran_err(1'b0),
+		.o_tran_src(tranreq_src),
+		.o_tran_len(tranreq_len),
+		//
+		.s_pkt_valid(fis_valid),
+		.s_data(fis_data),
+		.s_last(fis_last),
+		//
+		.m_valid(regtx_valid),
+		.m_ready(regtx_ready),
+		.m_data(regtx_data),
+		.m_last(regtx_last),
+		// S2MM control signals
 		// {{{
-		always @(posedge i_phy_clk)
-		if (!txphy_reset_n)
-			{ txphy_request, txphy_request_pipe } <= 0;
-		else
-			{ txphy_request, txphy_request_pipe }
-					<= { txphy_request_pipe, tx_request };
+		.o_s2mm_request(s2mm_core_request),
+		.i_s2mm_busy(s2mm_core_busy),
+		.i_s2mm_err(s2mm_core_err),
+		.o_s2mm_inc(ign_s2mm_inc),
+		.o_s2mm_size(ign_s2mm_size),
+		.o_s2mm_addr(s2mm_core_addr),
+		//
+		.i_s2mm_beat(s2mm_stb && !s2mm_stall),
 		// }}}
-
-		// tx_active
+		// MM2S control signals
 		// {{{
-		always @(posedge i_phy_clk)
-		if (!txphy_reset_n)
-			tx_active <= 0;
-		else if (o_tran_valid && i_tran_ready && o_tran_last)
-			tx_active <= 0;
-		else if (txphy_request && !txphy_ack)
-			tx_active <= 1;
+		.o_mm2s_request(mm2s_core_request),
+		.i_mm2s_busy(mm2s_core_busy),
+		.i_mm2s_err(mm2s_core_err),
+		.o_mm2s_inc(ign_mm2s_inc),
+		.o_mm2s_size(ign_mm2s_size),
+		.o_mm2s_addr(mm2s_core_addr)
 		// }}}
-
-		// txphy_ack
-		// {{{
-		always @(posedge i_phy_clk)
-		if (!txphy_reset_n)
-			txphy_ack <= 0;
-		else if (o_tran_valid && i_tran_ready && o_tran_last)
-			txphy_ack <= 1;
-		else if (!txphy_request)
-			txphy_ack <= 0;
-		// }}}
-
-		// tx_ack, tx_ack_pipe
-		// {{{
-		always @(posedge i_clk)
-		if (!tx_reset_n)
-			{ tx_ack, tx_ack_pipe } <= 0;
-		else
-			{ tx_ack, tx_ack_pipe } <= { tx_ack_pipe, txphy_ack };
-		// }}}
-
-		// txphy_reset_n, txphy_reset_pipe
-		// {{{
-		always @(posedge i_phy_clk or posedge i_reset)
-		if (i_reset)
-			{ txphy_reset_n, txphy_reset_pipe } <= 0;
-		else if (i_link_err || !i_link_ready)
-			{ txphy_reset_n, txphy_reset_pipe } <= 0;
-		else
-			{ txphy_reset_n, txphy_reset_pipe }
-						<= { txphy_reset_pipe, 1'b1 };
-		// }}}
-
-		// tx_reset_n, tx_reset_pipe
-		// {{{
-		always @(posedge i_clk or negedge txphy_reset_n)
-		if (!txphy_reset_n)
-			{ tx_reset_n, tx_reset_pipe } <= 0;
-		else
-			{ tx_reset_n, tx_reset_pipe }
-						<= { tx_reset_pipe, 1'b1 };
-		// }}}
-
-		assign	tx_write = i_wb_stb && i_wb_we && !o_wb_stall
-					&& i_wb_addr[2:1] == ADR_TXFIFO[2:1];
-		assign	tx_read  = tx_active && i_tran_ready;
-		assign	tx_fifo_read = !tx_fifo_empty && !tx_full;
-
-		sfifo #(
-			.BW(33), .LGFLEN(4)
-		) tx_fifo (
-			// {{{
-			.i_clk(i_clk), .i_reset(!tx_reset_n),
-			//
-			.i_wr(tx_write), .i_data({
-				i_wb_addr[0],
-				i_wb_data[7:0], i_wb_data[15:8],
-				i_wb_data[23:16], i_wb_data[31:24] }),
-				.o_full(tx_full), .o_fill(tx_fill),
-			//
-			.i_rd(tx_fifo_read), .o_data({ sfifo_last, tx_fifo_data }),
-				.o_empty(tx_fifo_empty)
-			// }}}
-		);
-
-		afifo #(
-			.WIDTH(33), .LGFIFO(LGFIFO)
-		) tx_afifo (
-			// {{{
-			.i_wclk(i_clk), .i_wr_reset_n(tx_reset_n),
-			//
-			.i_wr(tx_fifo_read), .i_wr_data({ sfifo_last, tx_fifo_data }),
-				.o_wr_full(tx_full),
-			//
-			.i_rclk(i_phy_clk), .i_rd_reset_n(txphy_reset_n),
-			.i_rd(tx_read), .o_rd_data({ o_tran_last, o_tran_data }),
-				.o_rd_empty(tx_empty)
-			// }}}
-		);
-
-		assign	o_tran_valid = tx_read;
-		// }}}
-	end endgenerate
+	);
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
-	// Receive: Device to host logic
+	// RX (incoming to memory) data path
 	// {{{
 	////////////////////////////////////////////////////////////////////////
 	//
 	//
 
-	generate if (OPT_DMA)
-	begin : GEN_RXDMA
+	// RX Gears, to pack incoming 32b words into bus words
+
+	satadma_rxgears #(
+		.BUS_WIDTH(DW), .OPT_LITTLE_ENDIAN(1'b0)
+	) u_rxgears (
 		// {{{
-
-		satatrn_route #(
-		) u_rxroute (
-		);
-
-		satadma_rxgears #(
-		) u_rxgears (
-		);
-
-		afifo #(
-			.WIDTH(32), .LGFIFO(LGFIFO)
-		) rx_afifo (
-			// {{{
-			.i_wclk(i_phy_clk), .i_wr_reset_n(rxphy_reset),
-			.i_wr(i_tran_valid), .i_wr_data(i_tran_data),
-				.o_wr_full(ign_wr_full),
-			//
-			.i_rclk(i_clk), .i_rd_reset_n(rx_reset_n),
-			.i_rd(rx_afifo_rd), .o_rd_data(rx_afifo_data),
-				.o_rd_empty(rx_afifo_empty)
-			// }}}
-		);
-
-		sfifo #(
-			.BW(33), .LGFLEN(LGFIFO)
-		) tx_fifo (
-			// {{{
-			.i_clk(i_clk), .i_reset(!tx_reset_n),
-			//
-			.i_wr(tx_write), .i_data({
-				i_wb_addr[0],
-				i_wb_data[7:0], i_wb_data[15:8],
-				i_wb_data[23:16], i_wb_data[31:24] }),
-				.o_full(tx_full), .o_fill(tx_fill),
-			//
-			.i_rd(tx_fifo_read), .o_data({ sfifo_last, tx_fifo_data }),
-				.o_empty(tx_fifo_empty)
-			// }}}
-		);
-
-		// No need for TXGears here: We're at the full bus width
-		// already.
-
-		satadma_s2mm #(
-		) u_mm2s (
-		);
-
-		// }}}
-	end else begin : NO_RXDMA
+		.i_clk(i_phy_clk), .i_reset(phy_reset_n),
+		.i_soft_reset(rx_reset_phyclk),
+		// .o_data_valid(datarx_valid),
+		// .o_data_data(datarx_data),
+		// .o_data_last(datarx_last)
+		// Incoming RX data, minus the FIS word
 		// {{{
-		reg		rxphy_reset, rx_reset_n;
-		reg	[1:0]	rxphy_pipe,  rx_reset_pipe;
-
-		wire		rx_afifo_rd, rx_afifo_empty, ign_wr_full;
-		wire	[31:0]	rx_afifo_data;
-
-		reg		rx_full_pipe;
-
-		// rxphy_reset, rxphy_pipe
+		.S_VALID(datarx_valid),
+		.S_READY(ign_datarx_ready),
+		.S_DATA({ datarx_data[ 7: 0], datarx_data[15: 8],
+				datarx_data[23:16], datarx_data[31:24],
+				{(DW-32){1'b0}} }),
+		.S_BYTES(GEAR_32BYTES),
+		.S_LAST(datarx_last),
+		// }}}
+		// Outgoing data--packet to bus word sizes
 		// {{{
-		initial	{ rxphy_reset, rxphy_pipe } = 0;
-		always @(posedge i_phy_clk or posedge i_reset)
-		if (i_reset)
-			{ rxphy_reset, rxphy_pipe } <= 0;
-		else if (i_tran_abort)
-			{ rxphy_reset, rxphy_pipe } <= 0;
-		else
-			{ rxphy_reset, rxphy_pipe } <= { rxphy_pipe, 1'b1 };
+		.M_VALID(rxgear_valid),
+		.M_READY(rxgear_ready),
+		.M_DATA( rxgear_data),
+		.M_BYTES({ ign_rxgear_bytes_msb, rxgear_bytes }),
+		.M_LAST( rxgear_last)
 		// }}}
+		// }}}
+	);
 
-		// rx_reset_n, rx_reset_pipe
+	afifo #(
+		// Just need enough of a FIFO to cross clock domains, no more
+		.WIDTH(1+$clog2(DW/8)+DW), .LGFIFO(LGAFIFO)
+	) u_rx_afifo (
 		// {{{
-		initial	{ rx_reset_n, rx_reset_pipe } = 0;
-		always @(posedge i_clk or posedge i_tran_abort)
-		if (i_tran_abort)
-			{ rx_reset_n, rx_reset_pipe } <= 0;
-		else if (i_reset)
-			{ rx_reset_n, rx_reset_pipe } <= 0;
-		else
-			{ rx_reset_n, rx_reset_pipe } <= { rx_reset_pipe, 1'b1 };
+		.i_wclk(i_phy_clk), .i_wr_reset_n(phy_reset_n),
+		.i_wr(rxgear_valid), .i_wr_data({
+				rxgear_last, rxgear_bytes, rxgear_data }),
+			.o_wr_full(o_tran_full),
+		//
+		.i_rclk(i_clk), .i_rd_reset_n(!i_reset),
+		.i_rd(!rxfifo_full), .o_rd_data(rx_afifo_data),
+			.o_rd_empty(rx_afifo_empty)
 		// }}}
+	);
 
-		assign	rx_read = i_wb_stb && !i_wb_we && !o_wb_stall
-					&& i_wb_addr[2:1] == ADR_RXFIFO[2:1];
-
-		afifo #(
-			.WIDTH(32), .LGFIFO(LGFIFO)
-		) rx_afifo (
-			// {{{
-			.i_wclk(i_phy_clk), .i_wr_reset_n(rxphy_reset),
-			.i_wr(i_tran_valid), .i_wr_data(i_tran_data),
-				.o_wr_full(ign_wr_full),
-			//
-			.i_rclk(i_clk), .i_rd_reset_n(rx_reset_n),
-			.i_rd(rx_afifo_rd), .o_rd_data(rx_afifo_data),
-				.o_rd_empty(rx_afifo_empty)
-			// }}}
-		);
-
-		assign	rx_afifo_rd = !rx_afifo_empty && !rx_full;
-
-		sfifo #(
-			.BW(32), .LGFLEN(4)
-		) rx_fifo (
-			// {{{
-			.i_clk(i_clk), .i_reset(!rx_reset_n),
-			//
-			.i_wr(rx_afifo_rd), .i_data(rx_afifo_data),
-				.o_full(rx_full), .o_fill(rx_fill),
-			//
-			.i_rd(rx_read), .o_data(rx_data),
-				.o_empty(rx_empty)
-			// }}}
-		);
-
-		initial	{ tran_full, rx_full_pipe } = 2'b00;
-		always @(posedge i_phy_clk)
-		if (i_reset || i_tran_abort)
-			{ tran_full, rx_full_pipe } <= 0;
-		else
-			{ tran_full, rx_full_pipe } <= { rx_full_pipe, rx_full};
-
-		assign	o_tran_full  = tran_full;
-		assign	o_tran_empty = rx_empty;
+	sfifo #(
+		.BW(1+$clog2(DW/8)+DW), .LGFLEN(LGFIFO)
+	) rx_fifo (
+		// {{{
+		.i_clk(i_clk), .i_reset(i_reset || i_tran_abort || rxdma_reset),
+		//
+		.i_wr(!rx_afifo_empty), .i_data(rx_afifo_data),
+			.o_full(rxfifo_full), .o_fill(ign_rxfifo_fill),
+		//
+		.i_rd(rxfifo_ready), .o_data({ rxfifo_last,
+						rxfifo_bytes, rxfifo_data }),
+			.o_empty(rxfifo_empty)
 		// }}}
-	end endgenerate
+	);
+
+	assign	o_tran_empty = rxfifo_empty;
+	assign	rxgear_ready = !rxfifo_full;
+	assign	rxfifo_valid = !rxfifo_empty;
+
+	satadma_s2mm #(
+		.ADDRESS_WIDTH(ADDRESS_WIDTH), .BUS_WIDTH(DW),
+		.OPT_LITTLE_ENDIAN(1'b0)
+	) u_s2mm (
+		// {{{
+		.i_clk(i_clk), .i_reset(i_reset || i_tran_abort),
+		//
+		.i_request(s2mm_core_request),
+		.o_busy(s2mm_core_busy),
+		.o_err(s2mm_core_err),
+		.i_inc(DMA_INC),
+		.i_size(SZ_BUS),
+		.i_addr(s2mm_core_addr),
+		//
+		.S_VALID(rxfifo_valid),
+		.S_READY(rxfifo_ready),
+		.S_DATA( rxfifo_data),
+		.S_BYTES({ (rxfifo_bytes==0), rxfifo_bytes }),
+		.S_LAST( rxfifo_last),
+		//
+		.o_wr_cyc(s2mm_cyc), .o_wr_stb(s2mm_stb), .o_wr_we(s2mm_we),
+		.o_wr_addr(s2mm_addr), .o_wr_data(s2mm_data),
+		.o_wr_sel(s2mm_sel),
+		.i_wr_stall(s2mm_stall), .i_wr_ack(s2mm_ack),
+			.i_wr_data({(DW){1'b0}}),
+		.i_wr_err(s2mm_err)
+		// }}}
+	);
+
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// TX (memory to link layer) data path
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
+
+	// MM2S
+	satadma_mm2s #(
+		.ADDRESS_WIDTH(ADDRESS_WIDTH), .BUS_WIDTH(DW),
+		.LGLENGTH(LGLENGTH)
+	) u_mm2s (
+		// {{{
+		.i_clk(i_clk), .i_reset(i_reset || i_tran_abort),
+		//
+		.i_request(mm2s_core_request),
+		.o_busy(mm2s_core_busy), .o_err(mm2s_core_err),
+		.i_inc(DMA_INC), .i_size(SZ_BUS),
+		.i_transferlen(tranreq_len),
+		.i_addr(mm2s_core_addr),
+		//
+		.o_rd_cyc(mm2s_cyc), .o_rd_stb(mm2s_stb), .o_rd_we(mm2s_we),
+		.o_rd_addr(mm2s_addr), .o_rd_data(mm2s_bus_data),
+		.o_rd_sel(mm2s_sel),
+		.i_rd_stall(mm2s_stall), .i_rd_ack(mm2s_ack),
+			.i_rd_data(i_dma_data),
+		.i_rd_err(mm2s_err),
+		//
+		.M_VALID(mm2s_valid),
+		.M_READY(1'b1 || mm2s_ready),	// *MUST* be one, no FIFO here
+		.M_DATA(mm2s_data),
+		.M_BYTES(mm2s_bytes),
+		.M_LAST(mm2s_last)
+		// }}}
+	);
+
+	// TXGEARS: Partial -> BUSDW
+	satadma_rxgears #(
+		.BUS_WIDTH(DW), .OPT_LITTLE_ENDIAN(1'b0)
+	) u_mm2s_gears (
+		// {{{
+		.i_clk(i_clk), .i_reset(i_reset),
+		.i_soft_reset(txdma_reset),
+		.S_VALID(mm2s_valid),
+		.S_READY(mm2s_ready),
+		.S_DATA( mm2s_data),
+		.S_BYTES(mm2s_bytes),
+		.S_LAST( mm2s_last),
+		//
+		.M_VALID(mm2sgear_valid),
+		.M_READY(mm2sgear_ready),
+		.M_DATA( mm2sgear_data),
+		.M_BYTES({ ign_mm2sgear_bytes_msb, mm2sgear_bytes }),
+		.M_LAST( mm2sgear_last)
+		// }}}
+	);
+
+	sfifo #(
+		.BW(1+$clog2(DW/8)+DW), .LGFLEN(LGFIFO)
+	) u_txfifo (
+		// {{{
+		.i_clk(i_clk), .i_reset(i_reset || i_tran_abort || txdma_reset),
+		//
+		.i_wr(mm2sgear_valid), .i_data({ mm2sgear_last,
+						mm2sgear_bytes, mm2sgear_data }),
+			.o_full(txfifo_full), .o_fill(ign_txfifo_fill),
+		//
+		.i_rd(!tx_afifo_full), .o_data({ txfifo_last,
+						txfifo_bytes, txfifo_data }),
+			.o_empty(txfifo_empty)
+		// }}}
+	);
+
+	assign	mm2sgear_ready = !txfifo_full;
+
+	// AFIFO (?)
+	afifo #(
+		// Just need enough of a FIFO to cross clock domains, no more
+		.WIDTH(1+$clog2(DW/8)+DW), .LGFIFO(LGAFIFO)
+	) u_tx_afifo (
+		// {{{
+		.i_wclk(i_phy_clk), .i_wr_reset_n(phy_reset_n),
+		.i_wr(!txfifo_empty),
+			.i_wr_data({ txfifo_last, txfifo_bytes, txfifo_data }),
+			.o_wr_full(tx_afifo_full),
+		//
+		.i_rclk(i_clk), .i_rd_reset_n(!i_reset),
+		.i_rd(tx_afifo_rd), .o_rd_data({
+				tx_afifo_last, tx_afifo_bytes, tx_afifo_data }),
+			.o_rd_empty(tx_afifo_empty)
+		// }}}
+	);
+
+	// TXGears: BUSDW -> 32b
+	satadma_txgears #(
+		.BUS_WIDTH(DW)
+	) u_txgears(
+		// {{{
+		.i_clk(i_phy_clk), .i_reset(!phy_reset_n),
+		.i_soft_reset(tx_reset_phyclk),
+		.i_size(SZ_32B),
+		.S_VALID(!tx_afifo_empty),
+		.S_READY(tx_afifo_rd),
+		.S_DATA( tx_afifo_data),
+		.S_BYTES({ (tx_afifo_bytes == 0), tx_afifo_bytes }),
+		.S_LAST( tx_afifo_last),
+		//
+		.M_VALID(txgear_valid),
+		.M_READY(txgear_ready),
+		.M_DATA( txgear_data),
+		.M_BYTES(txgear_bytes),
+		.M_LAST( txgear_last)
+		// }}}
+	);
+
+	satatrn_txarb
+	u_txarb (
+		// {{{
+		.i_clk(i_clk), .i_reset(i_reset), .i_phy_clk(i_phy_clk),
+			.i_phy_reset_n(phy_reset_n),//.i_link_err(i_link_err),
+		//
+		// Incoming control data for transmission, on i_clk
+		// {{{
+		.i_reg_valid(regtx_valid),
+		.o_reg_ready(regtx_ready),
+		.i_reg_data( regtx_data),
+		.i_reg_last( regtx_last),
+		// }}}
+		.i_txgate(tx_gate),	// Full packet is ready
+		// Incoming data for transmission, on i_phy_clk
+		// {{{
+		.i_data_valid(txgear_valid),
+		.o_data_ready(txgear_ready),
+		.i_data_data({	txgear_data[DW- 1:DW- 8],
+				txgear_data[DW- 9:DW-16],
+				txgear_data[DW-17:DW-24],
+				txgear_data[DW-25:DW-32] }),
+		.i_data_last( txgear_last),
+		// }}}
+		// Outgoing packet data
+		// {{{
+		.o_valid(o_tran_valid),
+		.i_ready(i_tran_ready),
+		.o_data(o_tran_data),
+		.o_last(o_tran_last)
+		// }}}
+		// }}}
+	);
+
+	// tx_gate
+	// {{{
+	always @(posedge i_clk)
+	if (i_reset || txdma_reset)
+		tx_gate <= 1'b0;
+	else if (mm2s_valid && mm2s_ready && mm2s_last)
+		tx_gate <= 1'b1;
+	// }}}
+
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Wishbone arbiter
+	// {{{
+	satatrn_wbarbiter #(
+		.DW(DW), .AW(AW)
+	) u_wbarbiter (
+		// {{{
+		.i_clk(i_clk), .i_reset(i_reset),
+		//
+		.i_a_cyc(mm2s_cyc),  .i_a_stb(mm2s_stb),  .i_a_we(mm2s_we),
+		.i_a_adr(mm2s_addr), .i_a_dat(mm2s_bus_data), .i_a_sel(mm2s_sel),
+		.o_a_stall(mm2s_stall), .o_a_ack(mm2s_ack), .o_a_err(mm2s_err),
+		//
+		.i_b_cyc(s2mm_cyc),  .i_b_stb(s2mm_stb),  .i_b_we(s2mm_we),
+		.i_b_adr(s2mm_addr), .i_b_dat(mm2s_bus_data), .i_b_sel(s2mm_sel),
+		.o_b_stall(s2mm_stall), .o_b_ack(s2mm_ack), .o_b_err(s2mm_err),
+		//
+		.o_cyc(o_dma_cyc),  .o_stb(o_dma_stb),  .o_we(o_dma_we),
+		.o_adr(o_dma_addr), .o_dat(o_dma_data), .o_sel(o_dma_sel),
+		.i_stall(i_dma_stall), .i_ack(i_dma_ack), .i_err(i_dma_err)
+		// }}}
+	);
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -465,130 +593,19 @@ module	sata_transport #(
 	//
 	//
 
-	// shadow_*, cfg_*
-	// {{{
-	always @(posedge i_clk)
-	if (i_reset)
-	begin
-		// {{{
-		shadow_0 <= 0;
-		shadow_1 <= 0;
-		shadow_2 <= 0;
-		shadow_3 <= 0;
-		shadow_4 <= 0;
-
-		cfg_link_err <= 0;
-		cfg_success  <= 0;
-		cfg_failed   <= 0;
-		// }}}
-	end else begin
-
-		if (i_wb_we) case(i_wb_addr)
-		ADR_CONTROL: begin
-			if (i_wb_sel[0] && i_wb_data[2])
-				cfg_success <= 1'b0;
-			if (i_wb_sel[0] && i_wb_data[3])
-				cfg_failed <= 1'b0;
-			if (i_wb_sel[0] && i_wb_data[4])
-				cfg_link_err <= 1'b0;
-			end
-		3'h1: begin
-			// {{{
-			if (i_wb_sel[0]) shadow_0[ 7: 0] <= i_wb_data[ 7: 0];
-			if (i_wb_sel[1]) shadow_0[15: 8] <= i_wb_data[15: 8];
-			if (i_wb_sel[2]) shadow_0[23:16] <= i_wb_data[23:16];
-			if (i_wb_sel[3]) shadow_0[31:24] <= i_wb_data[31:24];
-			end
-			// }}}
-		3'h2: begin
-			// {{{
-			if (i_wb_sel[0]) shadow_1[ 7: 0] <= i_wb_data[ 7: 0];
-			if (i_wb_sel[1]) shadow_1[15: 8] <= i_wb_data[15: 8];
-			if (i_wb_sel[2]) shadow_1[23:16] <= i_wb_data[23:16];
-			if (i_wb_sel[3]) shadow_1[31:24] <= i_wb_data[31:24];
-			end
-			// }}}
-		3'h3: begin
-			// {{{
-			if (i_wb_sel[0]) shadow_2[ 7: 0] <= i_wb_data[ 7: 0];
-			if (i_wb_sel[1]) shadow_2[15: 8] <= i_wb_data[15: 8];
-			if (i_wb_sel[2]) shadow_2[23:16] <= i_wb_data[23:16];
-			if (i_wb_sel[3]) shadow_2[31:24] <= i_wb_data[31:24];
-			end
-			// }}}
-		3'h4: begin
-			// {{{
-			if (i_wb_sel[0]) shadow_3[ 7: 0] <= i_wb_data[ 7: 0];
-			if (i_wb_sel[1]) shadow_3[15: 8] <= i_wb_data[15: 8];
-			if (i_wb_sel[2]) shadow_3[23:16] <= i_wb_data[23:16];
-			if (i_wb_sel[3]) shadow_3[31:24] <= i_wb_data[31:24];
-			end
-			// }}}
-		3'h5: begin
-			// {{{
-			if (i_wb_sel[0]) shadow_4[ 7: 0] <= i_wb_data[ 7: 0];
-			if (i_wb_sel[1]) shadow_4[15: 8] <= i_wb_data[15: 8];
-			if (i_wb_sel[2]) shadow_4[23:16] <= i_wb_data[23:16];
-			if (i_wb_sel[3]) shadow_4[31:24] <= i_wb_data[31:24];
-			end
-			// }}}
-		ADR_DMAWR: begin end
-		ADR_DMARD: begin end
-		ADR_DMALN: begin end
-		default: begin end
-		endcase
-
-		if (i_tran_success)
-			cfg_success <= 1'b1;
-		if (i_tran_failed)
-			cfg_failed <= 1'b0;
-		if (i_link_err)
-			cfg_link_err <= 1'b1;
-		if (i_link_err && tx_active)
-			cfg_failed <= 1'b1;
-	end
-	// }}}
-
-	assign	o_wb_stall = 1'b0;
-
-	// o_wb_ack
-	// {{{
-	initial	o_wb_ack = 1'b0;
-	always @(posedge i_clk)
-	if (i_reset || !i_wb_cyc)
-		o_wb_ack <= 1'b0;
-	else
-		o_wb_ack <= i_wb_stb && !o_wb_stall;
-	// }}}
-
-	assign	cfg_word = {
-			{(12-5){ 1'b0 }}, tx_fill,
-			{(12-5){ 1'b0 }}, rx_fill,
-			2'h0, i_link_ready, cfg_link_err,
-			cfg_failed, cfg_success, 1'b0, tx_active
-		};
-
-	// o_wb_data
-	// {{{
-	always @(posedge i_clk)
-	case(i_wb_addr)
-	0: o_wb_data <= cfg_word;
-	1: o_wb_data <= shadow_0;
-	2: o_wb_data <= shadow_1;
-	3: o_wb_data <= shadow_2;
-	4: o_wb_data <= shadow_3;
-	5: o_wb_data <= shadow_4;
-	6: o_wb_data <= rx_data;
-	7: o_wb_data <= rx_data;
-	endcase
-	// }}}
 	// }}}
 
 	// Make Verilator happy
 	// {{{
 	// Verilator lint_off UNUSED
 	wire	unused;
-	assign	unused = &{ 1'b0, tx_empty, tx_full, i_tran_last, ign_wr_full };
+	assign	unused = &{ 1'b0, i_tran_last, ign_datarx_ready, txgear_bytes,
+			tranreq_len, i_tran_success, i_tran_failed,
+			i_link_ready, ign_mm2sgear_bytes_msb,
+			ign_rxgear_bytes_msb,
+			ign_txfifo_fill, ign_rxfifo_fill, s2mm_data,
+			ign_mm2s_inc, ign_s2mm_inc,
+			ign_mm2s_size, ign_s2mm_size };
 	// Verilator lint_on  UNUSED
 	// }}}
 endmodule
