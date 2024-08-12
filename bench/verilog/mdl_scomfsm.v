@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	mdl_scomfsm.v
+// Filename:	bench/verilog/mdl_scomfsm.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -12,7 +12,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2022-2023, Gisselquist Technology, LLC
+// Copyright (C) 2022-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -68,7 +68,7 @@ module	mdl_scomfsm #(
 				ACTIVE    = 3'h4;
 
 	reg	[2:0]	fsm_state;
-	reg		r_tx;
+	reg		r_tx, r_idle;
 	reg	[5:0]	seq_count;
 	reg	[39:0]	sreg;
 	reg	[$clog2(NUM_COMWAKE)-1:0]	burst_count;

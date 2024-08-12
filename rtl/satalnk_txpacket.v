@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sata/satalnk_txpacket.v
+// Filename:	rtl/satalnk_txpacket.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -11,7 +11,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2021-2023, Gisselquist Technology, LLC
+// Copyright (C) 2021-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -36,6 +36,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 `default_nettype	none
+`timescale	1ns/1ps
 // }}}
 module	satalnk_txpacket #(
 		// {{{
@@ -135,7 +136,7 @@ module	satalnk_txpacket #(
 	// Step #3: Add framing
 	// {{{
 	satatx_framer #(
-		.P_SOF(P_SOF), .P_EOF(P_EOF), .P_HOLD(P_HOLD),
+		.P_SOF(P_SOF), .P_EOF(P_EOF), .P_HOLD(P_HOLD)
 	) framer (
 		// {{{
 		.S_AXI_ACLK(i_clk), .S_AXI_ARESETN(!i_reset),

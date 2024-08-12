@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	rtl/sata/sata_phy.v
+// Filename:	rtl/sata_phy.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -19,7 +19,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2021-2023, Gisselquist Technology, LLC
+// Copyright (C) 2021-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -44,6 +44,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 `default_nettype none
+`timescale	1ns/1ps
 // }}}
 module	sata_phy #(
 		// {{{
@@ -63,7 +64,8 @@ module	sata_phy #(
 		input	wire	[9:0]	i_wb_addr,
 		input	wire	[31:0]	i_wb_data,
 		input	wire	[3:0]	i_wb_sel,
-		output	wire		o_wb_stall, o_wb_ack,
+		output	wire		o_wb_stall,
+		output	reg		o_wb_ack,
 		output	wire	[31:0]	o_wb_data,
 		// }}}
 		// Transmitter control
@@ -86,14 +88,15 @@ module	sata_phy #(
 		output	wire	[31:0]	o_rx_data,
 		output	wire		o_rx_error, o_syncd,
 
+		output	wire		o_rx_elecidle,
 		output	wire		o_rx_cominit_detect,
 		output	wire		o_rx_comwake_detect,
+		input	wire		i_rx_cdrhold,
+		output	wire		o_rx_cdrlock,
 		// }}}
 		//
 		// COMFINISH
-		// COMINIT
 		// COMSAS
-		// COMWAKE
 		// TXDELECIDLEMODE
 		// Connections to external pads
 		// {{{
@@ -227,7 +230,7 @@ module	sata_phy #(
 	assign	o_wb_stall   = !pending_wb_ack;
 	assign	i_drp_addr   = i_wb_addr[8:0];
 	assign	o_wb_data    = { 16'h0, o_drp_data };
-	assign	o_wb_ack     = o_drp_ready;
+	// assign	o_wb_ack     = o_drp_ready;
 
 	initial	pending_wb_ack = 1'b0;
 	always @(posedge i_drp_clk)
@@ -388,17 +391,17 @@ module	sata_phy #(
 		// this reason we cannot align on pairs of bytes.
 		.ALIGN_COMMA_DOUBLE("FALSE"),	// Search for two commas in row
 		// Which comma bits should be checked for?
-		.ALIGN_COMMA_ENABLE({(10){OPT_ALIGN_ENABLE}}),	// Chk all bits
+		.ALIGN_COMMA_ENABLE({(10){OPT_AUTO_ALIGN}}),	// Chk all bits
 		// Which bytes are allowed to contain the comma?  4=> byte 0
 		.ALIGN_COMMA_WORD(4),	// Comma appears on byte zero *ONLY*
 		// PCOMMA: The first comma pattern in a potential pair
-		.ALIGN_PCOMMA_DET(OPT_ALIGN_ENABLE ? "TRUE" : "FALSE"),	// 1st comma in (potential) pair
+		.ALIGN_PCOMMA_DET(OPT_AUTO_ALIGN ? "TRUE" : "FALSE"),	// 1st comma in (potential) pair
 		.ALIGN_PCOMMA_VALUE(10'b01_0111_1100),	// 1st comma pattern
 		// MCOMMA: The second comma pattern in a potential pair
-		.ALIGN_MCOMMA_DET(OPT_ALIGN_ENABLE ? "TRUE" : "FALSE"),	// 2nd comma in potential pair
+		.ALIGN_MCOMMA_DET(OPT_AUTO_ALIGN ? "TRUE" : "FALSE"),	// 2nd comma in potential pair
 		.ALIGN_MCOMMA_VALUE(10'b10_1000_0011),
 		//
-		.SHOW_REALIGN_COMMA(OPT_ALIGN_ENABLE ? "TRUE" : "FALSE"),
+		.SHOW_REALIGN_COMMA(OPT_AUTO_ALIGN ? "TRUE" : "FALSE"),
 		//
 		.DEC_MCOMMA_DETECT("TRUE"),
 		.DEC_PCOMMA_DETECT("TRUE"),
@@ -603,7 +606,7 @@ module	sata_phy #(
 		//   [0]: Normal, 1'b1 overrides data delay ins w/ RX_DDI_SEL
 		.TST_RSV(32'h00000000),
 		.TXPCSRESET_TIME(5'b00001),
-		.TXPMARESET_TIME(5'b00001),
+		.TXPMARESET_TIME(5'b00001)
 		// }}}
 	) u_gtx_channel (
 		// {{{
@@ -689,8 +692,8 @@ module	sata_phy #(
 		// inputs
 		.RXCOMMADETEN(OPT_AUTO_ALIGN),	// Detect alignment primitives
 		// Which commas should we align on?
-		.RXMCOMMAALIGNEN(i_realign && OPT_ALIGN_ENABLE), // M commas
-		.RXPCOMMAALIGNEN(i_realign && OPT_ALIGN_ENABLE), // P commas too
+		.RXMCOMMAALIGNEN(i_realign && OPT_AUTO_ALIGN), // M commas
+		.RXPCOMMAALIGNEN(i_realign && OPT_AUTO_ALIGN), // P commas too
 		.RXSLIDE(1'b0),	// No manual comma alignment
 		// outputs
 		.RXCOMMADET(rx_comma),	// Open / unused, doesn't align w/ data
@@ -717,7 +720,7 @@ module	sata_phy #(
 		// RX Out-of-band Signaling
 		// {{{
 		.RXELECIDLEMODE(2'b00),			// Required for SATA
-		.RXELECIDLE(),				// Open / no connect
+		.RXELECIDLE(o_rx_elecidle),
 		.RXCOMINITDET(o_rx_cominit_detect),
 		.RXCOMSASDET(),				// Open / no connect
 		.RXCOMWAKEDET(o_rx_comwake_detect),
@@ -982,11 +985,11 @@ module	sata_phy #(
 	BUFG rxbuf ( .I(rx_clk_unbuffered), .O(o_rx_clk));
 
 	generate if (OPT_TXBUFFER)
-	begin
+	begin : GEN_TXBUF
 		BUFG txbuf ( .I(raw_tx_clk), .O(o_tx_clk));
 	
-	end else begin
-
+	end else begin : NO_TXBUF
+/*
 		MMCM #(
 		) tx_mmcm (
 			.CLKIN(raw_tx_clk),
@@ -994,6 +997,7 @@ module	sata_phy #(
 		);
 
 		BUFX txbuf (.I(tx_clk_unbuffered), .O(o_tx_clk));
+*/
 	end endgenerate
 
 endmodule

@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 ################################################################################
 ##
-## Filename:	genreport.pl
+## Filename:	bench/formal/genreport.pl
 ## {{{
 ## Project:	A Wishbone SATA controller
 ##
@@ -13,7 +13,7 @@
 ##
 ################################################################################
 ## }}}
-## Copyright (C) 2023, Gisselquist Technology, LLC
+## Copyright (C) 2023-2024, Gisselquist Technology, LLC
 ## {{{
 ## This file is part of the WBSATA project.
 ##

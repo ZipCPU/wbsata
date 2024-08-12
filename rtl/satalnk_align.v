@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	rtl/sata/satalnk_align.v
+// Filename:	rtl/satalnk_align.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -12,7 +12,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2021-2023, Gisselquist Technology, LLC
+// Copyright (C) 2021-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -37,6 +37,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 `default_nettype none
+`timescale	1ns/1ps
 // }}}
 module	satalnk_align #(
 		// {{{
@@ -79,6 +80,12 @@ module	satalnk_align #(
 
 	// Generate P_CONT and P_ALIGN primitives
 	// {{{
+	wire	[15:0]	next_state;
+	wire	[31:0]	next_mask;
+
+	assign	next_mask = NEXT_SCRAMBLER_MASK(align_fill);
+	assign	next_state= NEXT_SCRAMBLER_STATE(align_fill);
+
 	always @(posedge i_clk)
 	begin
 		align_repeat <= s_data[32] && s_data == last_pdata
@@ -100,8 +107,8 @@ module	satalnk_align #(
 			if (align_continued)
 			begin
 				o_primitive <= 0;
-				o_data      <= NEXT_SCRAMBLER_MASK(align_fill);
-				align_fill <= NEXT_SCRAMBLER_STATE(align_fill);
+				o_data      <= next_mask;
+				align_fill  <= next_state;
 			end else begin
 				{ o_primitive, o_data } <= P_CONT;
 				align_fill <= INITIAL_SCRAMBLER;

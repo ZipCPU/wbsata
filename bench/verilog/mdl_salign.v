@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	mdl_salign.v
+// Filename:	bench/verilog/mdl_salign.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -12,7 +12,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2022-2023, Gisselquist Technology, LLC
+// Copyright (C) 2022-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -37,6 +37,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 `default_nettype none
+`timescale	1ns/1ps
 // }}}
 module	mdl_salign // #()
 	(
@@ -53,7 +54,7 @@ module	mdl_salign // #()
 	// Local declarations
 	// {{{
 	reg		syncd;
-	reg	[3:0]	offset;
+	reg	[5:0]	offset;
 
 	reg	[39:0]	ishift_reg, pre_sync;
 	wire		dcd_ctrl, dcd_illegal, ign_dcd_valid, ign_dcd_ready;
@@ -115,14 +116,14 @@ module	mdl_salign // #()
 	if (!i_reset)
 		o_valid <= 0;
 	else
-		o_valid <= (syncd && offset == 39 && !dcd_illegal);
+		o_valid <= (syncd && offset == 6'd39 && !dcd_illegal);
 
 	always @(posedge i_clk)
 	if (!i_reset)
 		{ o_keyword, o_data } <= 0;
 	else if (!syncd)
 		{ o_keyword, o_data } <= 0;
-	else if (syncd && offset == 39)
+	else if (syncd && offset == 6'd39)
 		{ o_keyword, o_data } <= { dcd_ctrl, dcd_data };
 
 	// Keep Verilator happy

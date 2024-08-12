@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	mdl_srxcomsigs.v
+// Filename:	bench/verilog/mdl_srxcomsigs.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -22,7 +22,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2022-2023, Gisselquist Technology, LLC
+// Copyright (C) 2022-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //

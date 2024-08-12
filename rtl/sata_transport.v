@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sata/sata_transport.v
+// Filename:	rtl/sata_transport.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -18,7 +18,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2021-2023, Gisselquist Technology, LLC
+// Copyright (C) 2021-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -43,6 +43,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 `default_nettype none
+`timescale	1ns/1ps
 // }}}
 module	sata_transport #(
 		// {{{
@@ -132,22 +133,19 @@ module	sata_transport #(
 	wire			mm2s_cyc, mm2s_stb, mm2s_we,
 				mm2s_ack, mm2s_stall, mm2s_err;
 	wire	[AW-1:0]	s2mm_addr, mm2s_addr;
-	wire	[DW-1:0]	s2mm_data, mm2s_bus_data;
+	wire	[DW-1:0]	ign_s2mm_data, mm2s_bus_data;
 	wire	[DW/8-1:0]	s2mm_sel, mm2s_sel;
 
 	wire			s2mm_core_request, s2mm_core_busy,s2mm_core_err;
 	wire	[ADDRESS_WIDTH-1:0]	s2mm_core_addr, mm2s_core_addr;
 	wire			mm2s_core_request, mm2s_core_busy,mm2s_core_err;
 
-	wire		ign_s2mm_inc,  ign_mm2s_inc;
-	wire	[1:0]	ign_s2mm_size, ign_mm2s_size;
-
 	wire		rxgear_valid, rxgear_ready, rxgear_last,
 			ign_rxgear_bytes_msb;
 	wire		txgear_valid, txgear_ready, txgear_last;
 	wire	[DW-1:0]	rxgear_data,  txgear_data;
 	wire [$clog2(DW/8)-1:0]	rxgear_bytes;
-	wire [$clog2(DW/8):0]	txgear_bytes;
+	wire [$clog2(DW/8):0]	ign_txgear_bytes;
 
 	wire			rxfifo_full, rx_afifo_empty;
 	wire	[1+$clog2(DW/8)+DW-1:0]	rx_afifo_data;
@@ -243,7 +241,7 @@ module	sata_transport #(
 		// }}}
 	);
 
-	sata_fsm #(
+	satatrn_fsm #(
 		.ADDRESS_WIDTH(ADDRESS_WIDTH), .DW(DW), .LGLENGTH(LGLENGTH)
 	) u_fsm (
 		.i_clk(i_clk), .i_reset(i_reset),
@@ -277,8 +275,6 @@ module	sata_transport #(
 		.o_s2mm_request(s2mm_core_request),
 		.i_s2mm_busy(s2mm_core_busy),
 		.i_s2mm_err(s2mm_core_err),
-		.o_s2mm_inc(ign_s2mm_inc),
-		.o_s2mm_size(ign_s2mm_size),
 		.o_s2mm_addr(s2mm_core_addr),
 		//
 		.i_s2mm_beat(s2mm_stb && !s2mm_stall),
@@ -288,8 +284,6 @@ module	sata_transport #(
 		.o_mm2s_request(mm2s_core_request),
 		.i_mm2s_busy(mm2s_core_busy),
 		.i_mm2s_err(mm2s_core_err),
-		.o_mm2s_inc(ign_mm2s_inc),
-		.o_mm2s_size(ign_mm2s_size),
 		.o_mm2s_addr(mm2s_core_addr)
 		// }}}
 	);
@@ -391,7 +385,7 @@ module	sata_transport #(
 		.S_LAST( rxfifo_last),
 		//
 		.o_wr_cyc(s2mm_cyc), .o_wr_stb(s2mm_stb), .o_wr_we(s2mm_we),
-		.o_wr_addr(s2mm_addr), .o_wr_data(s2mm_data),
+		.o_wr_addr(s2mm_addr), .o_wr_data(ign_s2mm_data),
 		.o_wr_sel(s2mm_sel),
 		.i_wr_stall(s2mm_stall), .i_wr_ack(s2mm_ack),
 			.i_wr_data({(DW){1'b0}}),
@@ -511,7 +505,7 @@ module	sata_transport #(
 		.M_VALID(txgear_valid),
 		.M_READY(txgear_ready),
 		.M_DATA( txgear_data),
-		.M_BYTES(txgear_bytes),
+		.M_BYTES(ign_txgear_bytes),
 		.M_LAST( txgear_last)
 		// }}}
 	);
@@ -599,13 +593,15 @@ module	sata_transport #(
 	// {{{
 	// Verilator lint_off UNUSED
 	wire	unused;
-	assign	unused = &{ 1'b0, i_tran_last, ign_datarx_ready, txgear_bytes,
-			tranreq_len, i_tran_success, i_tran_failed,
-			i_link_ready, ign_mm2sgear_bytes_msb,
-			ign_rxgear_bytes_msb,
-			ign_txfifo_fill, ign_rxfifo_fill, s2mm_data,
-			ign_mm2s_inc, ign_s2mm_inc,
-			ign_mm2s_size, ign_s2mm_size };
+	assign	unused = &{ 1'b0,
+			// FIX THESE!  These shouldn't be ignored
+			i_tran_success, i_tran_failed, i_link_ready,
+			//
+			// These are expected to be ignored
+			ign_datarx_ready, ign_txgear_bytes,
+			ign_mm2sgear_bytes_msb, ign_rxgear_bytes_msb,
+			ign_txfifo_fill, ign_rxfifo_fill, ign_s2mm_data
+			};
 	// Verilator lint_on  UNUSED
 	// }}}
 endmodule

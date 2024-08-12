@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	satatb_top.v
+// Filename:	bench/verilog/satatb_top.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -14,7 +14,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2022-2023, Gisselquist Technology, LLC
+// Copyright (C) 2022-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -38,30 +38,37 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
+`default_nettype none
+`timescale	1ns/1ps
 // }}}
 module	satatb_top;
 	// Local declarations
 	// {{{
-	parameter	AW = 30, DW = 64;
+	parameter	AW = 24, DW = 64;
 
 	reg	wb_clk, wb_reset;
+	reg	ref_clk200;
 
 	// Control connections
 	// {{{
 	wire			wb_ctrl_cyc, wb_ctrl_stb, wb_ctrl_we,
 				wb_ctrl_stall, wb_ctrl_ack, wb_ctrl_err;
-	wire	[2-1:0]		wb_ctrl_addr;
+	wire	[3-1:0]		wb_ctrl_addr;
 	wire	[32-1:0]	wb_ctrl_data, wb_ctrl_idata;
 	wire	[32/8-1:0]	wb_ctrl_sel;
 	// }}}
 
 	// PHY DRP connection
 	// {{{
-	wire			wb_drp_cyc, wb_drp_stb, wb_drp_we,
-				wb_drp_stall, wb_drp_ack, wb_drp_err;
+	wire			wb_drp_cyc, wb_drp_stb;
+	// Verilator lint_off UNDRIVEN
+	wire			wb_drp_we, wb_drp_stall, wb_drp_ack, wb_drp_err;
 	wire	[10-1:0]	wb_drp_addr;
+	// Verilator lint_off UNUSED
 	wire	[32-1:0]	wb_drp_data, wb_drp_idata;
 	wire	[32/8-1:0]	wb_drp_sel;
+	// Verilator lint_on  UNUSED
+	// Verilator lint_on  UNDRIVEN
 	// }}}
 
 	// DMA connections
@@ -72,6 +79,21 @@ module	satatb_top;
 	wire	[DW-1:0]	wb_sata_data, wb_sata_idata;
 	wire	[DW/8-1:0]	wb_sata_sel;
 	// }}}
+
+	wire			sata_rx_p, sata_rx_n,
+				sata_tx_p, sata_tx_n;
+	wire		sata_txphy_clk, sata_txphy_ready,
+			sata_txphy_comwake, sata_txphy_comfinish,
+			sata_txphy_elecidle, sata_txphy_cominit,
+			sata_txphy_primitive;
+	wire		sata_phy_reset, sata_phy_ready, sata_phy_init_err;
+	wire	[31:0]	sata_txphy_data;
+	wire		sata_rxphy_elecidle, sata_rxphy_cominit,
+			sata_rxphy_comwake, sata_rxphy_cdrhold,
+			sata_rxphy_cdrlock;
+
+	wire		sata_rxphy_clk, sata_rxphy_valid;
+	wire	[31:0]	sata_rxphy_data;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -91,13 +113,12 @@ module	satatb_top;
 
 	initial	begin
 		wb_reset <= 1'b1;
-		@(posedge clk);
-		@(posedge clk)
+		@(posedge wb_clk);
+		@(posedge wb_clk)
 			wb_reset <= 1'b0;
 	end
 
 	initial	{ wb_drp_cyc,  wb_drp_stb  } = 2'b00;
-	initial	{ wb_sata_cyc, wb_sata_stb } = 2'b00;
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -116,7 +137,7 @@ module	satatb_top;
 		.i_wb_cyc(wb_ctrl_cyc), .i_wb_stb(wb_ctrl_stb),
 			.i_wb_we(wb_ctrl_we), .i_wb_addr(wb_ctrl_addr),
 			.i_wb_data(wb_ctrl_data), .i_wb_sel(wb_ctrl_sel),
-		.o_wb_stall(wb_ctrl_stall, .o_wb_ack(wb_ctrl_ack),
+		.o_wb_stall(wb_ctrl_stall), .o_wb_ack(wb_ctrl_ack),
 			.o_wb_data(wb_ctrl_idata),
 		// }}}
 		// DMA <-> memory
@@ -131,24 +152,30 @@ module	satatb_top;
 		// PHY interface
 		// {{{
 		.i_rxphy_clk(sata_rxphy_clk),
-		.i_rxphy_valid(sata_rxphy_valid),.i_rxphy_data(sata_rxphy_data),
+		.i_rxphy_valid(sata_rxphy_valid),
+		.i_rxphy_data(sata_rxphy_data),
 
 		.i_txphy_clk(sata_txphy_clk),
 		.o_txphy_primitive(sata_txphy_primitive),
 		.o_txphy_data(sata_txphy_data),
 		//
-		.o_tx_elecidle(		sata_txphy_elecidle),
-		.o_tx_cominit(		sata_txphy_cominit),
-		.o_tx_comwake(		sata_txphy_comwake),
-		.i_tx_comfinish(	sata_txphy_comfinish),
+		.o_txphy_elecidle(	sata_txphy_elecidle),
+		.o_txphy_cominit(	sata_txphy_cominit),
+		.o_txphy_comwake(	sata_txphy_comwake),
+		.i_txphy_comfinish(	sata_txphy_comfinish),
 		//
 		.o_phy_reset(sata_phy_reset), .i_phy_ready(sata_phy_ready)
 		// }}}
+		.i_rxphy_elecidle(	sata_rxphy_elecidle),
+		.i_rxphy_cominit(	sata_rxphy_cominit),
+		.i_rxphy_comwake(	sata_rxphy_comwake),
+		.o_rxphy_cdrhold(	sata_rxphy_cdrhold),
+		.i_rxphy_cdrlock(	sata_rxphy_cdrlock),
 		// }}}
 	);
 
-	sata_phy #(
-	) u_sata_phy (
+	sata_phy
+	u_sata_phy (
 		// {{{
 		.i_wb_clk(wb_clk), .i_reset(wb_reset),
 		.i_ref_clk200(ref_clk200),
@@ -181,13 +208,16 @@ module	satatb_top;
 		.o_rx_primitive(	sata_rxphy_valid),
 		.o_rx_data(		sata_rxphy_data),
 		//
-		.o_rx_cominit_detect(sata_rxphy_cominit),
-		.o_rx_comwake_detect(sata_rxphy_comwake),
+		.o_rx_elecidle(		sata_rxphy_elecidle),
+		.o_rx_cominit_detect(	sata_rxphy_cominit),
+		.o_rx_comwake_detect(	sata_rxphy_comwake),
+		.i_rx_cdrhold(		sata_rxphy_cdrhold),
+		.o_rx_cdrlock(		sata_rxphy_cdrlock),
 		// }}}
 		// I/O pad connections
 		// {{{
 		.o_tx_p(sata_tx_p), .o_tx_n(sata_tx_n),
-		.i_tx_p(sata_rx_p), .i_tx_n(sata_rx_n)
+		.i_rx_p(sata_rx_p), .i_rx_n(sata_rx_n)
 		// }}}
 		// }}}
 	);
@@ -198,8 +228,8 @@ module	satatb_top;
 	// SATA Device Verilog TB model
 	// {{{
 
-	satadev #(
-	) u_sata_device (
+	sata_model
+	u_sata_model (
 		.i_rx_p(sata_tx_p), .i_rx_n(sata_tx_n),
 		.o_tx_p(sata_rx_p), .o_tx_n(sata_rx_n)
 	);

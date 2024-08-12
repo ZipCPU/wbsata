@@ -11,7 +11,7 @@
 ##
 ################################################################################
 ## }}}
-## Copyright (C) 2022-2023, Gisselquist Technology, LLC
+## Copyright (C) 2022-2024, Gisselquist Technology, LLC
 ## {{{
 ## This file is part of the WBSATA project.
 ##

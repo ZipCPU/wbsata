@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sfifo.v
+// Filename:	rtl/sfifo.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -11,7 +11,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2022-2023, Gisselquist Technology, LLC
+// Copyright (C) 2022-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -33,57 +33,7 @@
 // {{{
 //		http://www.gnu.org/licenses/gpl.html
 //
-`default_nettype	none
-// }}}
-module sfifo #(
-		// {{{
-		parameter	BW=8,	// Byte/data width
-		parameter 	LGFLEN=4,
-		parameter [0:0]	OPT_ASYNC_READ = 1'b1,
-		parameter [0:0]	OPT_WRITE_ON_FULL = 1'b0,
-		parameter [0:0]	OPT_READ_ON_EMPTY = 1'b0
-		// }}}
-	) (
-		// {{{
-		input	wire		i_clk,
-		input	wire		i_reset,
-		//
-		// Write interface
-		input	wire		i_wr,
-		input	wire [(BW-1):0]	i_data,
-		output	wire 		o_full,
-		output	reg [LGFLEN:0]	o_fill,
-		//
-		// Read interface
-		input	wire		i_rd,
-		output	reg [(BW-1):0]	o_data,
-		output	wire		o_empty	// True if FIFO is empty
-`ifdef	FORMAL
-`ifdef	F_PEEK
-		, output wire	[LGFLEN:0]	f_first_addr,
-		output	wire	[LGFLEN:0]	f_second_addr,
-		output	reg	[BW-1:0]	f_first_data, f_second_data,
-
-		output	reg			f_first_in_fifo,
-						f_second_in_fifo,
-		output	reg	[LGFLEN:0]	f_distance_to_first,
-						f_distance_to_second
-`endif
-`endif
-		// }}}
-	);
-
-	// Register/net declarations
-	// {{{
-	localparam	FLEN=(1<<LGFLEN);
-	reg			r_full, r_empty;
-	reg	[(BW-1):0]	mem[0:(FLEN-1)];
-	reg	[LGFLEN:0]	wr_addr, rd_addr;
-
-	wire	w_wr = (i_wr && !o_full);
-	wire	w_rd = (i_rd && !o_empty);
-	// }}}
-	////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////
 	//
 	// Write half
 	// {{{

@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	sata_reset.v
+// Filename:	rtl/sata_reset.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -13,7 +13,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2022-2023, Gisselquist Technology, LLC
+// Copyright (C) 2022-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -38,6 +38,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 `default_nettype none
+`timescale	1ns/1ps
 // }}}
 module	sata_reset #(
 		parameter real	CLOCK_FREQUENCY_HZ = 75e6	// GEN 1
@@ -54,11 +55,11 @@ module	sata_reset #(
 		output	reg	o_tx_cominit,
 		output	reg	o_tx_comwake,
 		input	wire	i_tx_comfinish,
-		output	reg	o_rx_cdrhold,	// Freeze RX clk+data ctrl loop
 		//
 		input	wire	i_rx_elecidle,
 		input	wire	i_rx_cominit,
 		input	wire	i_rx_comwake,
+		output	reg	o_rx_cdrhold,	// Freeze RX clk+data ctrl loop
 		input	wire	i_rx_cdrlock,	// Clock and data lock indicator
 		//
 		input	wire		i_tx_primitive,

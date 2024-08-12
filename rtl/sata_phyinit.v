@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sata_phyinit.v
+// Filename:	rtl/sata_phyinit.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -11,7 +11,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2021-2023, Gisselquist Technology, LLC
+// Copyright (C) 2021-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -35,7 +35,8 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-`default_nettype	none
+`default_nettype none
+`timescale	1ns/1ps
 // }}}
 module	sata_phyinit #(
 		parameter [0:0]	OPT_WAIT_ON_ALIGN = 1'b0
@@ -127,7 +128,7 @@ module	sata_phyinit #(
 		else
 			{ sync_align, aligned_pipe } <= { aligned_pipe, i_aligned };
 		assign	aligned = sync_align;
-	end else begin
+	end else begin : NO_SYNC_ALIGN
 		assign	aligned = 1'b1;
 
 		// Verilator lint_off UNUSED

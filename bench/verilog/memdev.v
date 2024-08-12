@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	memdev.v
+// Filename:	bench/verilog/memdev.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -18,7 +18,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2015-2022, Gisselquist Technology, LLC
+// Copyright (C) 2015-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -42,7 +42,8 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-`default_nettype	none
+`default_nettype none
+`timescale	1ns/1ps
 // }}}
 module	memdev #(
 		// {{{

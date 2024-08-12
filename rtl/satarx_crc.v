@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sata/satarx_crc.v
+// Filename:	rtl/satarx_crc.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -31,7 +31,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2021-2023, Gisselquist Technology, LLC
+// Copyright (C) 2021-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -55,6 +55,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 `default_nettype none
+`timescale 1ns/1ps
 // }}}
 module	satarx_crc #(
 		// {{{
