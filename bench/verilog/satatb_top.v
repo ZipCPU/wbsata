@@ -198,7 +198,7 @@ module	satatb_top;
 	// SATA Device Verilog TB model
 	// {{{
 
-	satadev #(
+	mdl_sata #(
 	) u_sata_device (
 		.i_rx_p(sata_tx_p), .i_rx_n(sata_tx_n),
 		.o_tx_p(sata_rx_p), .o_tx_n(sata_rx_n)
