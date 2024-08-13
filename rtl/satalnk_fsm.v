@@ -73,9 +73,9 @@ module	satalnk_fsm (
 		// {{{
 		output	wire		m_phy_valid,	// *MUST* be true
 		input	wire		m_phy_ready,
-		output	wire	[32:0]	m_phy_data,
+		output	reg	[32:0]	m_phy_data,
 		// }}}
-		output	wire		o_phy_reset,
+		output	reg		o_phy_reset,
 		input	wire		i_phy_ready
 		// }}}
 	);

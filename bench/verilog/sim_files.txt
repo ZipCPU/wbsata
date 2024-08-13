@@ -41,5 +41,9 @@ mdl_scomfsm.v
 mdl_srxcomsigs.v
 mdl_txword.v
 ## Other test bench sources
-memdev.v
-
+wb2axip/addrdecode.v
+wb2axip/memdev.v
+wb2axip/wbdown.v
+wb2axip/wbupsz.v
+wb2axip/wbxbar.v
+wb_bfm.v

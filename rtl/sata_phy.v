@@ -61,12 +61,12 @@ module	sata_phy #(
 		// Wishbone DRP Control
 		// {{{
 		input	wire		i_wb_cyc, i_wb_stb, i_wb_we,
-		input	wire	[9:0]	i_wb_addr,
+		input	wire	[8:0]	i_wb_addr,
 		input	wire	[31:0]	i_wb_data,
 		input	wire	[3:0]	i_wb_sel,
 		output	wire		o_wb_stall,
 		output	reg		o_wb_ack,
-		output	wire	[31:0]	o_wb_data,
+		output	reg	[31:0]	o_wb_data,
 		// }}}
 		// Transmitter control
 		// {{{
@@ -225,11 +225,11 @@ module	sata_phy #(
 
 	assign	i_drp_clk    = i_wb_clk;
 	assign	i_drp_data   = i_wb_data[15:0];
-	assign	i_drp_enable = (i_wb_stb && (&i_wb_sel[1:0]));
+	assign	i_drp_enable = pending_wb_ack;
 	assign	i_drp_we     = i_drp_enable && i_wb_we;
 	assign	o_wb_stall   = !pending_wb_ack;
 	assign	i_drp_addr   = i_wb_addr[8:0];
-	assign	o_wb_data    = { 16'h0, o_drp_data };
+	// assign	o_wb_data    = { 16'h0, o_drp_data };
 	// assign	o_wb_ack     = o_drp_ready;
 
 	initial	pending_wb_ack = 1'b0;
@@ -261,6 +261,21 @@ module	sata_phy #(
 	//
 	//
 
+`ifdef	IVERILOG
+	reg	[15:0]	drp_mem	[0:511];
+
+	always @(posedge i_drp_clk)
+	if (i_drp_we && o_drp_ready)
+		drp_mem[i_drp_addr] <= i_drp_data;
+
+	always @(*)
+	begin
+		o_drp_data <= 16'h0;
+		if (i_drp_enable && o_drp_ready && !i_drp_we)
+			o_drp_data <= drp_mem[i_drp_addr];
+	end
+
+`else
 	GTXE2_CHANNEL #(
 		// {{{
 		// Power down control attributes
@@ -974,6 +989,7 @@ module	sata_phy #(
 		.PMARSVDIN2(5'h00)
 		// }}}
 	);
+`endif
 
 	// }}}
 
@@ -982,13 +998,22 @@ module	sata_phy #(
 			: { raw_rx_data[7:0], raw_rx_data[15:8],
 				raw_rx_data[23:16], raw_rx_data[31:24] };
 
+`ifdef	IVERILOG
+	assign	o_rx_clk = rx_clk_unbuffered;
+`else
 	BUFG rxbuf ( .I(rx_clk_unbuffered), .O(o_rx_clk));
+`endif
 
 	generate if (OPT_TXBUFFER)
 	begin : GEN_TXBUF
+`ifdef	IVERILOG
+		assign	o_tx_clk = raw_tx_clk;
+`else
 		BUFG txbuf ( .I(raw_tx_clk), .O(o_tx_clk));
+`endif
 	
 	end else begin : NO_TXBUF
+		assign	o_tx_clk = raw_tx_clk;
 /*
 		MMCM #(
 		) tx_mmcm (

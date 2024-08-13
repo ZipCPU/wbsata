@@ -44,40 +44,91 @@
 module	satatb_top;
 	// Local declarations
 	// {{{
-	parameter	AW = 24, DW = 64;
+	parameter	ADDRESS_WIDTH = 27;	// Byte address width
+	parameter	DW = 64;		// Width of the main (wide) bus
+	parameter	AW = ADDRESS_WIDTH-$clog2(DW/8); // Relevant addr bits
 
+	localparam	BFM_DW = 32,
+			BFM_AW = ADDRESS_WIDTH-$clog2(BFM_DW/8);
+
+	// Address map
+	// {{{
+	localparam [ADDRESS_WIDTH-1:0]
+			MEM_ADDR  = { 1'b1,   {(ADDRESS_WIDTH-1){1'b0}} },
+			CTRL_ADDR = { 3'b010, {(ADDRESS_WIDTH-3){1'b0}} },
+			DRP_ADDR  = { 3'b001, {(ADDRESS_WIDTH-3){1'b0}} };
+	localparam [ADDRESS_WIDTH:0]
+			MEM_MASK  = { 2'b01,   {(ADDRESS_WIDTH-1){1'b0}} },
+			CTRL_MASK = { 4'b1010, {(ADDRESS_WIDTH-3){1'b0}} },
+			DRP_MASK  = { 4'b1001, {(ADDRESS_WIDTH-3){1'b0}} };
+	// }}}
 	reg	wb_clk, wb_reset;
 	reg	ref_clk200;
 
+	// BFM Bus Connections
+	// {{{
+	wire			bfm_cyc, bfm_stb, bfm_we,
+				bfm_stall, bfm_ack, bfm_err;
+	wire	[BFM_AW-1:0]	bfm_addr;
+	wire	[BFM_DW-1:0]	bfm_data, bfm_idata;
+	wire	[BFM_DW/8-1:0]	bfm_sel;
+
+	wire			bfmw_cyc, bfmw_stb, bfmw_we,
+				bfmw_stall, bfmw_ack, bfmw_err;
+	wire	[AW:0]		bfmw_addr;
+	wire	[BFM_DW-1:0]	bfmw_data, bfmw_idata;
+	wire	[BFM_DW/8-1:0]	bfmw_sel;
+	// }}}
+
 	// Control connections
 	// {{{
-	wire			wb_ctrl_cyc, wb_ctrl_stb, wb_ctrl_we,
-				wb_ctrl_stall, wb_ctrl_ack, wb_ctrl_err;
-	wire	[3-1:0]		wb_ctrl_addr;
-	wire	[32-1:0]	wb_ctrl_data, wb_ctrl_idata;
-	wire	[32/8-1:0]	wb_ctrl_sel;
+	localparam	CTRL_AW = ($clog2(DW/8) > 5) ? 1 : (5 - $clog2(DW/8)),
+			CTRL_ADDRESS_WIDTH = CTRL_AW + $clog2(DW/8);
+
+	wire			sata_ctrlw_cyc, sata_ctrlw_stb, sata_ctrlw_we,
+				sata_ctrlw_stall, sata_ctrlw_ack,sata_ctrlw_err;
+	wire	[AW:0]		sata_ctrlw_addr;
+	wire	[DW-1:0]	sata_ctrlw_data, sata_ctrlw_idata;
+	wire	[DW/8-1:0]	sata_ctrlw_sel;
+
+	wire			sata_ctrl_cyc, sata_ctrl_stb, sata_ctrl_we,
+				sata_ctrl_stall, sata_ctrl_ack, sata_ctrl_err;
+	wire	[CTRL_ADDRESS_WIDTH-3:0]	sata_ctrl_addr;
+	wire	[32-1:0]	sata_ctrl_data, sata_ctrl_idata;
+	wire	[32/8-1:0]	sata_ctrl_sel;
 	// }}}
 
 	// PHY DRP connection
 	// {{{
-	wire			wb_drp_cyc, wb_drp_stb;
-	// Verilator lint_off UNDRIVEN
-	wire			wb_drp_we, wb_drp_stall, wb_drp_ack, wb_drp_err;
-	wire	[10-1:0]	wb_drp_addr;
-	// Verilator lint_off UNUSED
-	wire	[32-1:0]	wb_drp_data, wb_drp_idata;
-	wire	[32/8-1:0]	wb_drp_sel;
-	// Verilator lint_on  UNUSED
-	// Verilator lint_on  UNDRIVEN
+	wire			drpw_cyc,  drpw_stb;
+	wire			drpw_we,   drpw_stall, drpw_ack, drpw_err;
+	wire	[AW:0]		drpw_addr;
+	wire	[DW-1:0]	drpw_data, drpw_idata;
+	wire	[DW/8-1:0]	drpw_sel;
+
+	wire			drp_cyc,  drp_stb;
+	wire			drp_we,   drp_stall, drp_ack, drp_err;
+	wire	[9-1:0]		drp_addr;
+	wire	[32-1:0]	drp_data, drp_idata;
+	wire	[32/8-1:0]	drp_sel;
 	// }}}
 
 	// DMA connections
 	// {{{
-	wire			wb_sata_cyc, wb_sata_stb, wb_sata_we,
-				wb_sata_stall, wb_sata_ack, wb_sata_err;
-	wire	[AW-1:0]	wb_sata_addr;
-	wire	[DW-1:0]	wb_sata_data, wb_sata_idata;
-	wire	[DW/8-1:0]	wb_sata_sel;
+	wire			sata_dma_cyc, sata_dma_stb, sata_dma_we,
+				sata_dma_stall, sata_dma_ack, sata_dma_err;
+	wire	[AW-1:0]	sata_dma_addr;
+	wire	[DW-1:0]	sata_dma_data, sata_dma_idata;
+	wire	[DW/8-1:0]	sata_dma_sel;
+	// }}}
+
+	// Memory control
+	// {{{
+	wire			mem_cyc, mem_stb, mem_we,
+				mem_stall, mem_ack, mem_err;
+	wire	[AW:0]		mem_addr;
+	wire	[DW-1:0]	mem_data, mem_idata;
+	wire	[DW/8-1:0]	mem_sel;
 	// }}}
 
 	wire			sata_rx_p, sata_rx_n,
@@ -118,13 +169,119 @@ module	satatb_top;
 			wb_reset <= 1'b0;
 	end
 
-	initial	{ wb_drp_cyc,  wb_drp_stb  } = 2'b00;
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Wishbone BFM
+	// {{{
+
+	wb_bfm #(
+		.AW(BFM_AW), .DW(BFM_DW), .LGFIFO(4)
+	) u_bfm (
+		// {{{
+		.i_clk(wb_clk), .i_reset(wb_reset),
+		//
+		.o_wb_cyc(bfm_cyc), .o_wb_stb(bfm_stb), .o_wb_we(bfm_we),
+		.o_wb_addr(bfm_addr), .o_wb_data(bfm_data), .o_wb_sel(bfm_sel),
+		.i_wb_stall(bfm_stall), .i_wb_ack(bfm_ack),
+			.i_wb_data(bfm_idata), .i_wb_err(bfm_err)
+		// }}}
+	);
+
+	// Upsize to the full bus width
+	wbupsz #(
+		.ADDRESS_WIDTH(ADDRESS_WIDTH),
+		.SMALL_DW(BFM_DW), .WIDE_DW(DW)
+	) u_bfm_upsz (
+		// {{{
+		.i_clk(wb_clk), .i_reset(wb_reset),
+		//
+		.i_scyc(bfm_cyc), .i_sstb(bfm_stb), .i_swe(bfm_we),
+		.i_saddr(bfm_addr), .i_sdata(bfm_data), .i_ssel(bfm_sel),
+		.o_sstall(bfm_stall), .o_sack(bfm_ack),
+			.o_sdata(bfm_idata), .o_serr(bfm_err),
+		//
+		.o_wcyc(bfmw_cyc), .o_wstb(bfmw_stb), .o_wwe(bfmw_we),
+		.o_waddr(bfmw_addr), .o_wdata(bfmw_data), .o_wsel(bfmw_sel),
+		.i_wstall(bfmw_stall), .i_wack(bfmw_ack),
+			.i_wdata(bfmw_idata), .i_werr(bfmw_err)
+		// }}}
+	);
+
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Crossbar(s) & control downsizer(s)
+	// {{{
+
+	wbxbar #(
+		// {{{
+		.NM(2), .NS(3), .DW(DW), .AW(AW+1),
+		.SLAVE_ADDR({
+			{ 1'b1, CTRL_ADDR[ADDRESS_WIDTH-1:$clog2(DW/8)] },
+			{ 1'b1, DRP_ADDR[ADDRESS_WIDTH-1:$clog2(DW/8)] },
+			{ 1'b0, MEM_ADDR[ADDRESS_WIDTH-1:$clog2(DW/8)] } }),
+		.SLAVE_MASK({
+			{ CTRL_MASK[ADDRESS_WIDTH:$clog2(DW/8)] },
+			{ DRP_MASK[ADDRESS_WIDTH:$clog2(DW/8)] },
+			{ MEM_MASK[ADDRESS_WIDTH:$clog2(DW/8)] } })
+		// }}}
+	) u_wbwide (
+		// {{{
+		.i_clk(wb_clk), .i_reset(wb_reset),
+		//
+		.i_mcyc({  bfmw_cyc,    sata_dma_cyc   }),
+		.i_mstb({  bfmw_stb,    sata_dma_stb   }),
+		.i_mwe({   bfmw_we,     sata_dma_we    }),
+		.i_maddr({ { 1'b1, bfmw_addr },  { 1'b0, sata_dma_addr } }),
+		.i_mdata({ bfmw_data,   sata_dma_data }),
+		.i_msel({  bfmw_sel,    sata_dma_sel  }),
+		.o_mstall({ bfmw_stall, sata_dma_stall }),
+		.o_mack({   bfmw_ack,   sata_dma_ack }),
+		.o_mdata({  bfmw_idata, sata_dma_idata  }),
+		.o_merr({   bfmw_err,   sata_dma_err  }),
+		//
+		.o_scyc({   sata_ctrlw_cyc,   drpw_cyc,   mem_cyc   }),
+		.o_sstb({   sata_ctrlw_stb,   drpw_stb,   mem_stb   }),
+		.o_swe({    sata_ctrlw_we,    drpw_we,    mem_we    }),
+		.o_saddr({  sata_ctrlw_addr,  drpw_addr,  mem_addr  }),
+		.o_sdata({  sata_ctrlw_data,  drpw_data,  mem_data  }),
+		.o_ssel({   sata_ctrlw_sel,   drpw_sel,   mem_sel   }),
+		.i_sstall({ sata_ctrlw_stall, drpw_stall, mem_stall }),
+		.i_sack({   sata_ctrlw_ack,   drpw_ack,   mem_ack   }),
+		.i_sdata({  sata_ctrlw_idata, drpw_idata, mem_idata }),
+		.i_serr({   sata_ctrlw_err,   drpw_err,   mem_err   })
+		// }}}
+	);
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// SATA Device Under Test (DUT)
 	// {{{
+
+	wbdown #(
+		.ADDRESS_WIDTH(CTRL_ADDRESS_WIDTH),
+		.WIDE_DW(DW), .SMALL_DW(32)
+	) u_sata_ctrl_down (
+		// {{{
+		.i_clk(wb_clk), .i_reset(wb_reset),
+		//
+		.i_wcyc(sata_ctrlw_cyc), .i_wstb(sata_ctrlw_stb), .i_wwe(sata_ctrlw_we),
+		.i_waddr(sata_ctrlw_addr[CTRL_AW-1:0]),
+		.i_wdata(sata_ctrlw_data), .i_wsel(sata_ctrlw_sel),
+		.o_wstall(sata_ctrlw_stall),
+			.o_wack(sata_ctrlw_ack), .o_wdata(sata_ctrlw_idata),
+			.o_werr(sata_ctrlw_err),
+		//
+		.o_scyc(sata_ctrl_cyc), .o_sstb(sata_ctrl_stb), .o_swe(sata_ctrl_we),
+		.o_saddr(sata_ctrl_addr[CTRL_ADDRESS_WIDTH-$clog2(32/8)-1:0]),
+			.o_sdata(sata_ctrl_data), .o_ssel(sata_ctrl_sel),
+		.i_sstall(sata_ctrl_stall),
+			.i_sack(sata_ctrl_ack), .i_sdata(sata_ctrl_idata),
+			.i_serr(1'b0)
+		// }}}
+	);
 
 	sata_controller #(
 		.OPT_LOWPOWER(1'b1),
@@ -134,20 +291,20 @@ module	satatb_top;
 		.i_clk(wb_clk), .i_reset(wb_reset),
 		// SOC control
 		// {{{
-		.i_wb_cyc(wb_ctrl_cyc), .i_wb_stb(wb_ctrl_stb),
-			.i_wb_we(wb_ctrl_we), .i_wb_addr(wb_ctrl_addr),
-			.i_wb_data(wb_ctrl_data), .i_wb_sel(wb_ctrl_sel),
-		.o_wb_stall(wb_ctrl_stall), .o_wb_ack(wb_ctrl_ack),
-			.o_wb_data(wb_ctrl_idata),
+		.i_wb_cyc(sata_ctrl_cyc), .i_wb_stb(sata_ctrl_stb),
+			.i_wb_we(sata_ctrl_we), .i_wb_addr(sata_ctrl_addr[2:0]),
+			.i_wb_data(sata_ctrl_data), .i_wb_sel(sata_ctrl_sel),
+		.o_wb_stall(sata_ctrl_stall), .o_wb_ack(sata_ctrl_ack),
+			.o_wb_data(sata_ctrl_idata),
 		// }}}
 		// DMA <-> memory
 		// {{{
-		.o_dma_cyc(wb_sata_cyc), .o_dma_stb(wb_sata_stb),
-			.o_dma_we(wb_sata_we), .o_dma_addr(wb_sata_addr),
-			.o_dma_data(wb_sata_data), .o_dma_sel(wb_sata_sel),
-		.i_dma_stall(wb_sata_stall), .i_dma_ack(wb_sata_ack),
-			.i_dma_data(wb_sata_idata),
-			.i_dma_err(wb_sata_err),
+		.o_dma_cyc(sata_dma_cyc), .o_dma_stb(sata_dma_stb),
+			.o_dma_we(sata_dma_we), .o_dma_addr(sata_dma_addr),
+			.o_dma_data(sata_dma_data), .o_dma_sel(sata_dma_sel),
+		.i_dma_stall(sata_dma_stall), .i_dma_ack(sata_dma_ack),
+			.i_dma_data(sata_dma_idata),
+			.i_dma_err(sata_dma_err),
 		// }}}
 		// PHY interface
 		// {{{
@@ -164,13 +321,35 @@ module	satatb_top;
 		.o_txphy_comwake(	sata_txphy_comwake),
 		.i_txphy_comfinish(	sata_txphy_comfinish),
 		//
-		.o_phy_reset(sata_phy_reset), .i_phy_ready(sata_phy_ready)
+		.o_phy_reset(sata_phy_reset), .i_phy_ready(sata_phy_ready),
 		// }}}
 		.i_rxphy_elecidle(	sata_rxphy_elecidle),
 		.i_rxphy_cominit(	sata_rxphy_cominit),
 		.i_rxphy_comwake(	sata_rxphy_comwake),
 		.o_rxphy_cdrhold(	sata_rxphy_cdrhold),
-		.i_rxphy_cdrlock(	sata_rxphy_cdrlock),
+		.i_rxphy_cdrlock(	sata_rxphy_cdrlock)
+		// }}}
+	);
+
+	wbdown #(
+		.ADDRESS_WIDTH(11),
+		.WIDE_DW(DW), .SMALL_DW(32)
+	) u_drp_down (
+		// {{{
+		.i_clk(wb_clk), .i_reset(wb_reset),
+		//
+		.i_wcyc(drpw_cyc), .i_wstb(drpw_stb), .i_wwe(drpw_we),
+		.i_waddr(drpw_addr[12-$clog2(DW/8)-1:0]),
+		.i_wdata(drpw_data), .i_wsel(drpw_sel),
+		.o_wstall(drpw_stall),
+			.o_wack(drpw_ack), .o_wdata(drpw_idata),
+			.o_werr(drpw_err),
+		//
+		.o_scyc(drp_cyc), .o_sstb(drp_stb), .o_swe(drp_we),
+		.o_saddr(drp_addr), .o_sdata(drp_data), .o_ssel(drp_sel),
+		.i_sstall(drp_stall),
+			.i_sack(drp_ack), .i_sdata(drp_idata),
+			.i_serr(1'b0)
 		// }}}
 	);
 
@@ -183,12 +362,12 @@ module	satatb_top;
 		.o_ready(sata_phy_ready), .o_init_err(sata_phy_init_err),
 		// DRP interface
 		// {{{
-		.i_wb_cyc(wb_drp_cyc), .i_wb_stb(wb_drp_stb),
-			.i_wb_we(wb_drp_we),
-		.i_wb_addr(wb_drp_addr), .i_wb_data(wb_drp_data),
-			.i_wb_sel(wb_drp_sel),
-		.o_wb_stall(wb_drp_stall), .o_wb_ack(wb_drp_ack),
-			.o_wb_data(wb_drp_data),
+		.i_wb_cyc(drp_cyc), .i_wb_stb(drp_stb),
+			.i_wb_we(drp_we),
+		.i_wb_addr(drp_addr), .i_wb_data(drp_data),
+			.i_wb_sel(drp_sel),
+		.o_wb_stall(drp_stall), .o_wb_ack(drp_ack),
+			.o_wb_data(drp_data),
 		// }}}
 		// Transmitter control
 		// {{{
@@ -243,16 +422,25 @@ module	satatb_top;
 	memdev #(
 		.LGMEMSZ(AW + $clog2(DW/8)), .DW(DW)
 	) u_ram (
+		// {{{
 		.i_clk(wb_clk), .i_reset(wb_reset),
-		.i_wb_cyc(wb_sata_cyc), .i_wb_stb(wb_sata_stb),
-			.i_wb_we(wb_sata_we), .i_wb_addr(wb_sata_addr),
-			.i_wb_data(wb_sata_data), .i_wb_sel(wb_sata_sel),
-		.o_wb_stall(wb_sata_stall),
-		.o_wb_ack(wb_sata_ack),
-		.o_wb_data(wb_sata_idata)
+		//
+		.i_wb_cyc(mem_cyc), .i_wb_stb(mem_stb),
+			.i_wb_we(mem_we), .i_wb_addr(mem_addr),
+			.i_wb_data(mem_data), .i_wb_sel(mem_sel),
+		.o_wb_stall(mem_stall),
+		.o_wb_ack(mem_ack),
+		.o_wb_data(mem_idata)
+		// }}}
 	);
 
-	assign	wb_sata_err = 1'b0;
+	assign	mem_err = 1'b0;
 
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Test-Bench driver
+	// {{{
+// `include SCRIPT
 	// }}}
 endmodule

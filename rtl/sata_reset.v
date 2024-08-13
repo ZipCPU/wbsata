@@ -72,7 +72,7 @@ module	sata_reset #(
 		input	wire		i_rx_valid,
 		input	wire	[32:0]	i_rx_data,
 		//
-		output	wire	o_link_up
+		output	reg		o_link_up
 	);
 
 `include "sata_primitives.vh"
@@ -208,6 +208,8 @@ module	sata_reset #(
 		o_tx_comwake   <= 1'b0;
 		o_tx_elecidle  <= 1'b0;
 		o_rx_cdrhold   <= 1'b1;
+
+		o_link_up      <= 1'b0;
 
 		{ o_phy_primitive, o_phy_data } <= P_ALIGN;
 	end else begin

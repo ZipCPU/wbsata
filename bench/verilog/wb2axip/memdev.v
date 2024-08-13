@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	bench/verilog/memdev.v
+// Filename:	bench/verilog/wb2axip/memdev.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -176,9 +176,8 @@ module	memdev #(
 		// }}}
 	end endgenerate
 	// }}}
-	////////////////////////////////////////////////////////////////////////
-	//
-	// Wishbone return signaling
+
+	// o_wb_ack
 	// {{{
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -211,7 +210,13 @@ module	memdev #(
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 `ifdef	FORMAL
-	reg	f_past_valid;
+	localparam	F_LGDEPTH = 2;
+	reg			f_past_valid;
+	wire	[F_LGDEPTH-1:0]	f_nreqs, f_nacks, f_outstanding;
+
+	wire	[(AW-1):0]	f_addr;
+	reg	[31:0]		f_data;
+
 	initial	f_past_valid = 1'b0;
 	always @(posedge i_clk)
 		f_past_valid <= 1'b1;
@@ -226,9 +231,9 @@ module	memdev #(
 	fwb_slave #(
 		.AW(AW), .DW(DW), .F_MAX_STALL(1), .F_MAX_ACK_DELAY(2),
 		.F_OPT_DISCONTINUOUS(1), .F_LGDEPTH(F_LGDEPTH)
-		) fwb(i_clk, i_reset, i_wb_cyc, i_wb_stb, i_wb_we, i_wb_addr,
-			i_wb_data, i_wb_sel, o_wb_ack, o_wb_stall, o_wb_data,
-			1'b0, f_nreqs, f_nacks, f_outstanding);
+	) fwb(i_clk, i_reset, i_wb_cyc, i_wb_stb, i_wb_we, i_wb_addr,
+		i_wb_data, i_wb_sel, o_wb_ack, o_wb_stall, o_wb_data,
+		1'b0, f_nreqs, f_nacks, f_outstanding);
 
 	generate if (EXTRACLOCK)
 	begin
@@ -276,32 +281,24 @@ module	memdev #(
 	assign	f_addr = $anyconst;
 	initial	assume(mem[f_addr] == f_data);
 
-
-	generate if (OPT_ROM)
+	generate if (!OPT_ROM)
 	begin : F_MATCH_WRITES
 
 		always @(posedge i_clk)
-		if ((w_wstb)&&(f_addr == w_addr))
-		begin
-			if (w_sel[3])
-				f_data[31:24] <= w_data[31:24];
-			if (w_sel[2])
-				f_data[23:16] <= w_data[23:16];
-			if (w_sel[1])
-				f_data[15: 8] <= w_data[15: 8];
-			if (w_sel[0])
-				f_data[ 7: 0] <= w_data[ 7: 0];
-		end
+		if (w_wstb && f_addr == w_addr)
+		for(ik=0; ik < DW/8; ik=ik+1)
+		if (w_sel[ik])
+			f_data[ik * 8 +: 8] <= w_data[ik*8 +: 8];
 
 	end endgenerate
 
 	always @(*)
 		assert(mem[f_addr] == f_data);
-	
+
 	always @(posedge i_clk)
 	if ((f_past_valid)&&(OPT_ROM))
 		assert($stable(f_data));
-	
+
 `endif
 // }}}
 endmodule
