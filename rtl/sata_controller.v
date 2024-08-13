@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sata/sata_controller.v
+// Filename:	rtl/sata_controller.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -13,7 +13,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2021-2023, Gisselquist Technology, LLC
+// Copyright (C) 2021-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -38,6 +38,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 `default_nettype none
+`timescale	1ns/1ps
 // }}}
 module	sata_controller #(
 		// {{{
@@ -71,8 +72,9 @@ module	sata_controller #(
 		output	wire [DW/8-1:0]	o_dma_sel,
 		//
 		input	wire		i_dma_stall,
-		input	reg		i_dma_ack,
-		input	reg [DW-1:0]	i_dma_data,
+		input	wire		i_dma_ack,
+		input	wire [DW-1:0]	i_dma_data,
+		input	wire		i_dma_err,
 		// }}}
 		// Link <-> PHY interface
 		// {{{
@@ -105,8 +107,7 @@ module	sata_controller #(
 
 	// Local declarations
 	// {{{
-	wire	link_error, link_ready;
-
+	wire	link_error, link_ready, comlink_up, tx_link_ready;
 	wire	cfg_continue_en, cfg_scrambler_en, cfg_crc_en;
 
 	// h2d, d2h
@@ -118,11 +119,19 @@ module	sata_controller #(
 			d2h_tran_last, d2h_tran_abort;
 	wire	[31:0]	d2h_tran_data;
 	// }}}
+
+	reg		tx_link_reset;
+	reg	[1:0]	tx_reset_pipe;
+
+	wire		tx_link_primitive;
+	wire	[31:0]	tx_link_data;
+	wire		link_reset_request;
 	// }}}
 
 	assign	cfg_continue_en  = 1'b1;
 	assign	cfg_scrambler_en = 1'b1;
 	assign	cfg_crc_en       = 1'b1;
+	assign	o_phy_reset	= i_reset;
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Transport layer
@@ -181,17 +190,9 @@ module	sata_controller #(
 	//
 	// Link layer
 	// {{{
-	reg		tx_link_reset;
-	reg	[1:0]	tx_reset_pipe;
-
-	wire		tx_link_primitive;
-	wire	[31:0]	tx_link_data;
-	wire		link_reset_request;
-	wire		link_ready;
-
 	initial	{ tx_link_reset, tx_reset_pipe } = -1;
-	always @(posedge i_txphy_clk or posedge i_reset)
-	if (i_reset)
+	always @(posedge i_txphy_clk or negedge i_phy_ready)
+	if (!i_phy_ready)
 		{ tx_link_reset, tx_reset_pipe } <= -1;
 	else
 		{ tx_link_reset, tx_reset_pipe } <= { tx_reset_pipe, 1'b0 };
@@ -232,7 +233,7 @@ module	sata_controller #(
 		.o_phy_primitive(tx_link_primitive),
 		.o_phy_data(tx_link_data),
 		.o_phy_reset(link_reset_request),
-		.i_phy_ready(link_ready)
+		.i_phy_ready(tx_link_ready)
 		// }}}
 		// }}}
 	);
@@ -259,7 +260,7 @@ module	sata_controller #(
 		.o_tx_cominit(o_txphy_cominit),
 		.o_tx_comwake(o_txphy_comwake),
 		.i_tx_comfinish(i_txphy_comfinish),
-		.o_rx_rxcdrhold(o_rxphy_cdrhold),		// Async
+		.o_rx_cdrhold(o_rxphy_cdrhold),			// Async
 		//
 		// RX clock domain
 		.i_rx_elecidle(i_rxphy_elecidle),
@@ -274,7 +275,7 @@ module	sata_controller #(
 		.i_rx_data(i_rxphy_data),
 		//
 		// TX path, goes through RESET primitive
-		.o_tx_ready(link_ready),
+		.o_tx_ready(tx_link_ready),
 		.i_tx_primitive(tx_link_primitive),
 		.i_tx_data(tx_link_data),
 		//

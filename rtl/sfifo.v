@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sfifo.v
+// Filename:	rtl/sfifo.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -11,7 +11,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2022-2023, Gisselquist Technology, LLC
+// Copyright (C) 2022-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -33,7 +33,10 @@
 // {{{
 //		http://www.gnu.org/licenses/gpl.html
 //
+////////////////////////////////////////////////////////////////////////////////
+//
 `default_nettype	none
+`timescale	1ns/1ps
 // }}}
 module sfifo #(
 		// {{{

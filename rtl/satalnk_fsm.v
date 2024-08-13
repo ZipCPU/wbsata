@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	rtl/sata/satalnk_fmc.v
+// Filename:	rtl/satalnk_fsm.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -11,7 +11,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2022-2023, Gisselquist Technology, LLC
+// Copyright (C) 2022-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -36,11 +36,9 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 `default_nettype none
+`timescale	1ns/1ps
 // }}}
-module	satalnk_fsm #(
-		// {{{
-		// }}}
-	) (
+module	satalnk_fsm (
 		// {{{
 		input	wire		i_clk, i_reset,
 		// Transport interface: Two abortable AXI streams
@@ -75,9 +73,9 @@ module	satalnk_fsm #(
 		// {{{
 		output	wire		m_phy_valid,	// *MUST* be true
 		input	wire		m_phy_ready,
-		output	wire	[32:0]	m_phy_data,
+		output	reg	[32:0]	m_phy_data,
 		// }}}
-		output	wire		o_phy_reset,
+		output	reg		o_phy_reset,
 		input	wire		i_phy_ready
 		// }}}
 	);

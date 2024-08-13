@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	mdl_sbitsync.v
+// Filename:	bench/verilog/mdl_sbitsync.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -15,7 +15,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2022-2023, Gisselquist Technology, LLC
+// Copyright (C) 2022-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -42,9 +42,7 @@
 `default_nettype none
 `timescale 1ns/1ps
 // }}}
-module	mdl_sbitsync #(
-		parameter	OVERSAMPLE = 4
-	) (
+module	mdl_sbitsync (
 		input	wire	i_reset,
 		input	wire	i_rx_data,
 		output	wire	o_rxclk
@@ -53,6 +51,7 @@ module	mdl_sbitsync #(
 	// Local declarations
 	// {{{
 	parameter	realtime	NOMINAL_BAUD = 1000.0/1500.0;
+	localparam	realtime	HALF_BAUD = NOMINAL_BAUD/2.0;
 	realtime	baud_period = NOMINAL_BAUD;
 	realtime	prise, pfall, nextedge = 0;
 
@@ -76,7 +75,7 @@ module	mdl_sbitsync #(
 	// the middle of the next baud interval where things change.
 	//
 
-	assign	dlybit = #(NOMINAL_BAUD / 2.0) (i_rx_data === 1'b1);
+	assign	#HALF_BAUD dlybit = (i_rx_data === 1'b1);
 	assign	autoprod = (dlybit === 1'b1) ^ (i_rx_data === 1'b1);
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -88,13 +87,13 @@ module	mdl_sbitsync #(
 	// a buad interval
 
 	always @(posedge autoprod)
-		prise = $time;
+		prise <= $time;
 
 	always @(negedge autoprod)
 	begin
-		pfall = $time;
-		if (pfall > prise && pfall - prise <= 3.0*NOMINAL_BAUD/4.0)
-			pcenter = prise + (pfall - prise)/2;
+		pfall <= $time;
+		// if (pfall > prise && pfall - prise <= 3.0*NOMINAL_BAUD/4.0)
+		//	pcenter = prise + (pfall - prise)/2;
 
 		if (pfall - prise < NOMINAL_BAUD/2.0)
 			rxclk <= #(NOMINAL_BAUD/2.0 - (pfall - prise)/2) 1'b0;
@@ -103,11 +102,11 @@ module	mdl_sbitsync #(
 
 		// Center the rise of the next clock on the middle of this
 		// baud interval
-		rxclk <= #(NOMINAL_BAUD - (pfall - prise)/2) 1'b1;
+		rxclk <= #(NOMINAL_BAUD - ($time - prise)/2) 1'b1;
 
 		// Note the time of lock, lest rxclk rise early (in the next
 		// block ...)
-		nextedge = $time + (NOMINAL_BAUD - (pfall - prise)/2);
+		nextedge <= $time + (NOMINAL_BAUD - ($time - prise)/2);
 	end
 	// }}}
 
@@ -138,10 +137,12 @@ module	mdl_sbitsync #(
 		end
 	end
 
+	// Verilator lint_off LATCH
 	initial	clkgate = 0;
 	always @(*)
 	if (!rxclk)
 		clkgate = !i_reset;
+	// Verilator lint_on  LATCH
 
 	assign	o_rxclk = rxclk && clkgate;
 endmodule

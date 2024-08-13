@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	satatrn_fsm.v
+// Filename:	rtl/satatrn_fsm.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -22,7 +22,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2021-2023, Gisselquist Technology, LLC
+// Copyright (C) 2021-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -47,6 +47,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 `default_nettype none
+`timescale	1ns/1ps
 // }}}
 module	satatrn_fsm #(
 		// {{{
@@ -94,8 +95,6 @@ module	satatrn_fsm #(
 		// {{{
 		output	reg			o_s2mm_request,
 		input	wire			i_s2mm_busy, i_s2mm_err,
-		output	wire			o_s2mm_inc,
-		output	wire	[1:0]		o_s2mm_size,
 		output wire [ADDRESS_WIDTH-1:0]	o_s2mm_addr,
 		input	wire			i_s2mm_beat,
 		// }}}
@@ -103,8 +102,6 @@ module	satatrn_fsm #(
 		// {{{
 		output	reg			o_mm2s_request,
 		input	wire			i_mm2s_busy, i_mm2s_err,
-		output	wire			o_mm2s_inc,
-		output	wire	[1:0]		o_mm2s_size,
 		output reg [ADDRESS_WIDTH-1:0]	o_mm2s_addr
 		//
 		// output reg			o_dma_abort
@@ -147,7 +144,6 @@ module	satatrn_fsm #(
 				FSM_DMA_TXDATA		= 4'h9,
 				FSM_WAIT_REG		= 4'ha;
 				// FSM_RESET		= 4'h0;
-	localparam [1:0]	SZ_BUS = 2'b00;
 
 	reg	[2:0]	cmd_type;
 	reg		known_cmd;
@@ -178,15 +174,6 @@ module	satatrn_fsm #(
 	assign	DF   = r_command[5];
 	assign	DRQ  = r_command[3];
 	assign	ERR  = r_command[0];
-	// }}}
-
-	// Constant outputs
-	// {{{
-	assign	o_s2mm_size = SZ_BUS;
-	assign	o_mm2s_size = SZ_BUS;
-
-	assign	o_s2mm_inc = 1'b1;
-	assign	o_mm2s_inc = 1'b1;
 	// }}}
 
 	// cmd_type, known_cmd

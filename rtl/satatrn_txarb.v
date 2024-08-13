@@ -1,3 +1,5 @@
+`default_nettype none
+`timescale	1ns/1ps
 module	satatrn_txarb #(
 		parameter	LGAFIFO = 4,
 		parameter [0:0]	OPT_LOWPOWER = 1'b0

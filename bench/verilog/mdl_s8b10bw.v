@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	mdl_s8b10bw.v
+// Filename:	bench/verilog/mdl_s8b10bw.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -24,7 +24,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2022-2023, Gisselquist Technology, LLC
+// Copyright (C) 2022-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -49,8 +49,11 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 `default_nettype none
+`timescale	1ns/1ps
 // }}}
-module	mdl_s8b10bw (
+module	mdl_s8b10bw #(
+		parameter [0:0]	OPT_REGISTERED=1
+	) (
 		// {{{
 		input	wire	i_clk, i_reset,
 		input	wire		S_VALID,	// *MUST* be == 1
@@ -58,9 +61,9 @@ module	mdl_s8b10bw (
 		input	wire		S_CTRL,		//Is this a control wrd?
 		input	wire	[31:0]	S_DATA,
 		//
-		output	reg		M_VALID,
+		output	wire		M_VALID,
 		input	wire		M_READY,
-		output	reg	[39:0]	M_DATA	
+		output	wire	[39:0]	M_DATA
 		// }}}
 	);
 
@@ -101,16 +104,28 @@ module	mdl_s8b10bw (
 	else if (S_VALID && (!M_VALID || M_READY))
 		running_disparity <= d3;
 
-	initial	M_VALID = 1'b0;
-	always @(posedge i_clk)
-	if (i_reset)
-		M_VALID <= 1'b0;
-	else if (!M_VALID || M_READY)
-		M_VALID <= S_VALID;
+	generate if (OPT_REGISTERED)
+	begin : GEN_REGISTERED
+		reg		r_valid;
+		reg	[39:0]	r_data;
 
-	always @(posedge i_clk)
-	if (!M_VALID || M_READY)
-		M_DATA <= w_data;
+		initial	r_valid = 1'b0;
+		always @(posedge i_clk)
+		if (i_reset)
+			r_valid <= 1'b0;
+		else if (!M_VALID || M_READY)
+			r_valid <= S_VALID;
+
+		always @(posedge i_clk)
+		if (!M_VALID || M_READY)
+			r_data <= w_data;
+
+		assign	M_VALID = r_valid;
+		assign	M_DATA  = r_data;
+	end else begin : GEN_COMBINATORIAL
+		assign	M_VALID = S_VALID;
+		assign	M_DATA  = w_data;
+	end endgenerate
 
 	assign	S_READY = !M_VALID || M_READY;
 endmodule

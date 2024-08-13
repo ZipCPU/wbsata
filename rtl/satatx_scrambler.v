@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sata/satatx_scrambler.v
+// Filename:	rtl/satatx_scrambler.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -11,7 +11,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2022-2023, Gisselquist Technology, LLC
+// Copyright (C) 2022-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -36,6 +36,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 `default_nettype none
+`timescale	1ns/1ps
 // }}}
 module	satatx_scrambler #(
 		// {{{

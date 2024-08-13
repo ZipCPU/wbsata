@@ -1,0 +1,52 @@
+################################################################################
+##
+## Filename:	bench/verilog/dev_testcases.txt
+## {{{
+## Project:	A Wishbone SATA controller
+##
+## Purpose:	Defines a set of tests to be applied to the SATA controller
+##		and simulation model for the purposes of validating the
+##	controller.
+##
+## Creator:	Dan Gisselquist, Ph.D.
+##		Gisselquist Technology, LLC
+##
+################################################################################
+## }}}
+## Copyright (C) 2024, Gisselquist Technology, LLC
+## {{{
+## This file is part of the WBSATA project.
+##
+## The WBSATA project is a free software (firmware) project: you may
+## redistribute it and/or modify it under the terms of  the GNU General Public
+## License as published by the Free Software Foundation, either version 3 of
+## the License, or (at your option) any later version.
+##
+## This program is distributed in the hope that it will be useful, but WITHOUT
+## ANY WARRANTY; without even the implied warranty of MERCHANTIBILITY or
+## FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+## for more details.
+##
+## You should have received a copy of the GNU General Public License along
+## with this program.  If not, please see <http://www.gnu.org/licenses/> for a
+## copy.
+## }}}
+## License:	GPL, v3, as defined and found on www.gnu.org,
+## {{{
+##		http://www.gnu.org/licenses/gpl.html
+##
+################################################################################
+## }}}
+## Format:
+##  Test name | Test configuration | Test script (or S/W load) | (PARAM=X)*
+## {{{
+##
+## Test configurations are one of:
+##	WB	Uses tb_wb.v as the top level.
+##		This is an all-Verilog TB.  The test script is a Verilog file
+##		containing instructions for the Wishbone bus-functional model
+##		(BFM).
+##
+##		This is currently the *ONLY* supported configuration at present.
+## }}}
+init		WB  satainit

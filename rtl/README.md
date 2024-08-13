@@ -30,5 +30,3 @@
 - [`sata_phy`](sata_phy.v)
   - [`sata_phyinit`](sata_phyinit.v)
   - `sata_phypwr` (Needs to be connected)
-
-Unused: `sata_fsm`, `sata_rxdata`, `sata_txdata`

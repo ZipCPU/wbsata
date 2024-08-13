@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sata/satatx_crc.v
+// Filename:	rtl/satatx_crc.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -11,7 +11,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2021-2023, Gisselquist Technology, LLC
+// Copyright (C) 2021-2024, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -36,6 +36,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 `default_nettype none
+`timescale	1ns/1ps
 // }}}
 module	satatx_crc #(
 		// {{{
@@ -97,12 +98,16 @@ module	satatx_crc #(
 
 	// crc
 	// {{{
+	wire	[31:0]	next_crc;
+
+	assign	next_crc = advance_crc(crc, S_AXIS_TDATA);
+
 	always @(posedge S_AXI_ACLK)
 	if (!S_AXI_ARESETN)
 		crc <= INITIAL_CRC;
 	else if (S_AXIS_TVALID && S_AXIS_TREADY)
 	begin
-		crc <= advance_crc(crc, S_AXIS_TDATA);
+		crc <= next_crc;
 	// end else if (M_AXIS_TVALID && M_AXIS_TREADY && M_AXIS_TLAST)
 	end else if (state == S_CRC && (!M_AXIS_TVALID || M_AXIS_TREADY))
 	begin
