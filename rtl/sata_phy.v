@@ -151,13 +151,13 @@ module	sata_phy #(
 	// Step 9. Now ready for data
 
 	wire	rx_clk_unbuffered, qpll_clk, qpll_refck;
-	wire	rx_pll_reset, rx_pll_locked, rx_gtx_reset, rx_reset_done,
+	wire	rx_pll_reset, rx_gtx_reset, rx_reset_done,
 		rx_cdr_lock, rx_aligned, rx_user_ready, rx_watchdog_err,
 		rx_ready, rx_align_done;
 	reg	last_rx_align_done, rx_align_done_ck, rx_align_done_pipe;
 	reg	[1:0]	rx_align_count, rx_align_edges;
 
-	wire	tx_pll_reset, tx_pll_locked, tx_gtx_reset, tx_reset_done,
+	wire	tx_pll_reset, tx_gtx_reset, tx_reset_done,
 		tx_user_ready, tx_watchdog_err;
 
 	// First, reset the QPLL
@@ -184,7 +184,7 @@ module	sata_phy #(
 		.i_reset(i_reset || qpll_reset || !qpll_lock),
 		.i_power_down(1'b0), // power_down),
 		.o_pll_reset(rx_pll_reset),
-		.i_pll_locked(rx_pll_locked),
+		.i_pll_locked(qpll_lock),
 		.o_gtx_reset(rx_gtx_reset),
 		.i_gtx_reset_done(rx_reset_done),
 		.i_aligned(rx_aligned),
@@ -233,7 +233,7 @@ module	sata_phy #(
 		.i_clk(i_wb_clk), .i_reset(i_reset || !qpll_lock),
 		.i_power_down(1'b0), // power_down),
 		.o_pll_reset(tx_pll_reset),
-		.i_pll_locked(tx_pll_locked),
+		.i_pll_locked(qpll_lock),
 		.o_gtx_reset(tx_gtx_reset),
 		.i_gtx_reset_done(tx_reset_done),
 		.i_aligned(1'b1),	// We don't wait for TX alignment
@@ -244,7 +244,7 @@ module	sata_phy #(
 	);
 
 	assign	o_init_err = rx_watchdog_err || tx_watchdog_err;
-	assign	o_ready = rx_ready && o_tx_ready;
+	assign	o_ready = o_tx_ready; // rx_ready && o_tx_ready;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//

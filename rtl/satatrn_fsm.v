@@ -77,7 +77,7 @@ module	satatrn_fsm #(
 		//
 		output	wire			o_int,
 		//
-		// input	wire			i_link_up,
+		input	wire			i_link_up,
 		// output	reg			o_link_reset,
 		//
 		// Need to process incoming register FISs here
@@ -105,8 +105,6 @@ module	satatrn_fsm #(
 		output	reg			o_mm2s_request,
 		input	wire			i_mm2s_busy, i_mm2s_err,
 		output reg [ADDRESS_WIDTH-1:0]	o_mm2s_addr
-		//
-		// output reg			o_dma_abort
 		// }}}
 		// }}}
 	);
@@ -164,7 +162,7 @@ module	satatrn_fsm #(
 			last_fis;
 	reg	[3:0]	r_port;
 	reg	[15:0]	r_count;
-	reg		r_busy, r_int, return_to_idle;
+	reg		r_busy, r_int, return_to_idle, r_dma_fail;
 	reg	[ADDRESS_WIDTH-1:0]	r_dma_address;
 	reg	[15:0]			dma_length;
 	reg		last_rx_fis;
@@ -190,7 +188,7 @@ module	satatrn_fsm #(
 	begin
 		known_cmd <= 1'b0;
 		if (!r_busy && i_wb_stb && i_wb_we && !o_wb_stall
-			&& i_wb_addr == ADDR_CMD && i_wb_sel[2])
+			&& i_wb_addr == ADDR_CMD && (&i_wb_sel[3:0]))
 		begin
 			cmd_type  <= CMD_NONDATA;
 			known_cmd <= 0;
@@ -372,6 +370,7 @@ module	satatrn_fsm #(
 		return_to_idle <= 1'b0;
 		r_icc      <= 0;
 		r_port     <= 0;
+		r_dma_fail  <= 0;
 		// }}}
 	end else if (soft_reset)
 	begin
@@ -394,6 +393,30 @@ module	satatrn_fsm #(
 		return_to_idle <= 1'b0;
 		r_icc      <= 0;
 		r_port     <= 0;
+		r_dma_fail  <= 0;
+		// }}}
+	end else if (!i_link_up || i_tran_err)
+	begin
+		// {{{
+		fsm_state      <= FSM_IDLE;
+		o_s2mm_request <= 1'b0;
+		// o_s2mm_addr    <= 0;
+		//
+		o_mm2s_request <= 1'b0;
+		// o_mm2s_addr    <= 0;
+		//
+		// r_dma_address <= 0;
+		// r_features <= 0;
+		// r_command  <= 0;
+		// r_lba      <= 0;
+		// r_int      <= 0;
+		// r_device   <= 0;
+		// r_count    <= 0;
+		r_busy     <= 0;
+		return_to_idle <= (fsm_state != FSM_IDLE);
+		// r_icc      <= 0;
+		// r_port     <= 0;
+		r_dma_fail  <= 1'b1;	// *should* be 1 if r_dma_fail||DMA active
 		// }}}
 	end else begin
 
@@ -425,6 +448,7 @@ module	satatrn_fsm #(
 			r_count <= s_data[15:0];
 
 		return_to_idle <= 1'b0;
+		r_dma_fail <= r_dma_fail || i_mm2s_err || i_s2mm_err;
 		case(fsm_state)
 		FSM_IDLE: begin
 			// {{{
@@ -494,6 +518,7 @@ module	satatrn_fsm #(
 
 			if (known_cmd)
 			begin
+				r_dma_fail <= 1'b0;
 				fsm_state  <= FSM_COMMAND;
 				last_fis <= FIS_REG_TO_DEV;
 
@@ -722,7 +747,8 @@ module	satatrn_fsm #(
 		o_wb_data <= 32'h0;
 		case(i_wb_addr)
 		0: o_wb_data <= { r_features[7:0], r_command,
-					r_int, 3'b0, r_port, last_fis };
+					r_int, r_dma_fail, 2'b0,
+					r_port, last_fis };
 		1: o_wb_data <= { r_device, r_lba[23:0] };
 		2: o_wb_data <= { r_features[15:8], r_lba[47:24] };
 		3: o_wb_data <= { r_control, r_icc, r_count };

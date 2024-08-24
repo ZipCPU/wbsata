@@ -199,6 +199,10 @@ module	sata_reset #(
 	// COMINIT/COMRESET signals have a gap of 320 ns between them
 	// COMWAKE signals have a gap of 103.5-109.9 ns between them
 
+	initial	o_tx_cominit  = 1'b0;
+	initial	o_tx_comwake  = 1'b0;
+	initial	o_tx_elecidle = 1'b1;
+	initial	o_link_up     = 1'b0;
 	always @(posedge i_tx_clk)
 	if (i_reset)
 	begin

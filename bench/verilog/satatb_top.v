@@ -688,6 +688,13 @@ module	satatb_top;
 		@(posedge wb_clk);
 		// testscript;
 
+		// wait(sata_phy_ready);
+		//
+		wait(u_controller.comlink_up);
+		//
+		repeat(50)
+			@(posedge wb_clk);
+
 		if (error_flag)
 		begin
 			$display("TEST FAIL!");

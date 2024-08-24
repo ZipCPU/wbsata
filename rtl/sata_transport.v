@@ -254,12 +254,12 @@ module	sata_transport #(
 		.o_wb_stall(o_wb_stall),.o_wb_ack(o_wb_ack),
 		.o_wb_data(o_wb_data),
 		// }}}
-		// .i_link_up
+		.i_link_up(i_link_ready && !i_link_err),
 		// .o_link_reset _request
 		//
 		.o_tran_req(tran_request),
 		.i_tran_busy(tran_request), // tranreq_busy),
-		.i_tran_err(1'b0),
+		.i_tran_err(i_tran_abort),
 		.o_tran_src(tranreq_src),
 		.o_tran_len(tranreq_len),
 		//
