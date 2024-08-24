@@ -48,7 +48,7 @@ module	satatb_top;
 	parameter	DW = 64;		// Width of the main (wide) bus
 	parameter	AW = ADDRESS_WIDTH-$clog2(DW/8); // Relevant addr bits
 	parameter [0:0]	OPT_CPU = 1'b0;
-
+	parameter	CONSOLE_FILE="console.txt";
 	localparam	BFM_DW = 32,
 			BFM_AW = ADDRESS_WIDTH-$clog2(BFM_DW/8);
 
@@ -166,6 +166,7 @@ module	satatb_top;
 
 	wire			con_cyc,   con_stb, con_we,
 				con_stall, con_ack, con_err;
+	reg			r_con_ack;
 	wire	[CTRL_ADDRESS_WIDTH-$clog2(DW/8)-1:0]	con_addr;
 	wire	[DW-1:0]	con_data,  con_idata;
 	wire	[DW/8-1:0]	con_sel;
@@ -563,11 +564,19 @@ module	satatb_top;
 	// SATA Device Verilog TB model
 	// {{{
 
-	sata_model
-	u_sata_model (
-		.i_rx_p(sata_tx_p), .i_rx_n(sata_tx_n),
-		.o_tx_p(sata_rx_p), .o_tx_n(sata_rx_n)
-	);
+	localparam [0:0]	OPT_ATTACH_SATA_MODEL = 1'b0;
+
+	generate if (OPT_ATTACH_SATA_MODEL)
+	begin : GEN_SATA_MODEL
+		sata_model
+		u_sata_model (
+			.i_rx_p(sata_tx_p), .i_rx_n(sata_tx_n),
+			.o_tx_p(sata_rx_p), .o_tx_n(sata_rx_n)
+		);
+	end else begin : NO_SATA_MODEL
+
+		assign	{ sata_rx_p, sata_rx_n } = 2'bzz;
+	end endgenerate
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -656,7 +665,7 @@ module	satatb_top;
 	if (con_stb && con_we && con_addr[1:0] == 2'b11 && con_sel[0])
 		con_write_byte <= con_data[7:0];
 
-	always @(posedge i_clk)
+	always @(posedge wb_clk)
 	if (!wb_reset && con_write_en)
 	begin
 		$fwrite(sim_console, "%1s", con_write_byte);
@@ -669,6 +678,34 @@ module	satatb_top;
 	//
 	// Test-Bench driver
 	// {{{
+	reg	error_flag = 1'b0;
 // `include SCRIPT
+
+	initial	begin
+		error_flag = 1'b0;
+		@(posedge wb_clk);
+		wait(!wb_reset);
+		@(posedge wb_clk);
+		// testscript;
+
+		if (error_flag)
+		begin
+			$display("TEST FAIL!");
+		end else begin
+			$display("Test pass");
+		end
+
+		$finish;
+	end
+
+	always @(posedge error_flag)
+	if (!wb_reset)
+	begin
+		$display("ERROR-FLAG DETECTED");
+		repeat(200)
+			@(posedge wb_clk);
+		$display("TEST-FAIL/ERROR FLAG");
+		$finish;
+	end
 	// }}}
 endmodule

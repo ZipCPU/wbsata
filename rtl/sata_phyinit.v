@@ -231,7 +231,7 @@ module	sata_phyinit #(
 			end
 		endcase
 
-		if (!pll_locked && fsm_state > FSM_POWER_DOWN)
+		if (!pll_locked && fsm_state > FSM_PLL_WAIT)
 		begin
 			fsm_state   <= FSM_PLL_RESET;
 			fsm_counter <= 4;
@@ -277,10 +277,8 @@ module	sata_phyinit #(
 	//
 
 	assign	o_err = (watchdog_timeout && fsm_state > FSM_GTX_RESET);
-	assign	o_pll_reset = (fsm_state == FSM_PLL_RESET);
-	assign	o_gtx_reset = (fsm_state == FSM_GTX_RESET
-				|| fsm_state == FSM_PLL_RESET
-				|| fsm_state == FSM_PLL_WAIT);
+	assign	o_pll_reset = (fsm_state <= FSM_PLL_RESET);
+	assign	o_gtx_reset = (fsm_state <= FSM_GTX_RESET);
 	assign	o_user_ready = (fsm_state >= FSM_GTX_WAIT);
 	assign	o_complete = (fsm_state >= FSM_READY);
 	// }}}

@@ -70,8 +70,8 @@ module	sata_transport #(
 		input	wire	[3:0]	i_wb_sel,
 		//
 		output	wire		o_wb_stall,
-		output	reg		o_wb_ack,
-		output	reg	[31:0]	o_wb_data,
+		output	wire		o_wb_ack,
+		output	wire	[31:0]	o_wb_data,
 		// }}}
 		// Wishbone DMA interface
 		// {{{
@@ -85,6 +85,7 @@ module	sata_transport #(
 		input	wire	[31:0]	i_dma_data,
 		input	wire		i_dma_err,
 		// }}}
+		output	wire		o_int,
 		// Link layer interface
 		// {{{
 		// output	wire		o_cfg_continue_en,
@@ -261,6 +262,8 @@ module	sata_transport #(
 		.i_tran_err(1'b0),
 		.o_tran_src(tranreq_src),
 		.o_tran_len(tranreq_len),
+		//
+		.o_int(o_int),
 		//
 		.s_pkt_valid(fis_valid),
 		.s_data(fis_data),

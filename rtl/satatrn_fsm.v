@@ -75,6 +75,8 @@ module	satatrn_fsm #(
 		output	reg			o_tran_src,
 		output	reg	[LGLENGTH:0]	o_tran_len,
 		//
+		output	wire			o_int,
+		//
 		// input	wire			i_link_up,
 		// output	reg			o_link_reset,
 		//
@@ -95,7 +97,7 @@ module	satatrn_fsm #(
 		// {{{
 		output	reg			o_s2mm_request,
 		input	wire			i_s2mm_busy, i_s2mm_err,
-		output wire [ADDRESS_WIDTH-1:0]	o_s2mm_addr,
+		output reg [ADDRESS_WIDTH-1:0]	o_s2mm_addr,
 		input	wire			i_s2mm_beat,
 		// }}}
 		// MM2S control
@@ -127,6 +129,12 @@ module	satatrn_fsm #(
 				// FIS_FUTURE4  = 8'hd9;
 				// FIS_VENDOR1  = 8'hc7;
 				// FIS_VENDOR2  = 8'hd4;
+	localparam	[2:0]	ADDR_CMD	= 0,
+				ADDR_LBALO	= 1,
+				ADDR_LBAHI	= 2,
+				ADDR_COUNT	= 3,
+				ADDR_LO		= 6,
+				ADDR_HI		= 7;
 	localparam	[2:0]	CMD_NONDATA	= 0,
 				CMD_PIO_READ	= 1,
 				CMD_PIO_WRITE	= 2,
@@ -156,7 +164,7 @@ module	satatrn_fsm #(
 			last_fis;
 	reg	[3:0]	r_port;
 	reg	[15:0]	r_count;
-	reg		r_busy, r_int;
+	reg		r_busy, r_int, return_to_idle;
 	reg	[ADDRESS_WIDTH-1:0]	r_dma_address;
 	reg	[15:0]			dma_length;
 	reg		last_rx_fis;
@@ -182,7 +190,7 @@ module	satatrn_fsm #(
 	begin
 		known_cmd <= 1'b0;
 		if (!r_busy && i_wb_stb && i_wb_we && !o_wb_stall
-			&& i_wb_addr == 0 && i_wb_sel[2])
+			&& i_wb_addr == ADDR_CMD && i_wb_sel[2])
 		begin
 			cmd_type  <= CMD_NONDATA;
 			known_cmd <= 0;
@@ -282,22 +290,22 @@ module	satatrn_fsm #(
 		wide_address = 0;
 		wide_address[ADDRESS_WIDTH-1:0] = r_dma_address;
 
-		if (i_wb_addr == 6 && i_wb_sel[0] && i_wb_we)
+		if (i_wb_addr == ADDR_LO && i_wb_sel[0] && i_wb_we)
 			wide_address[ 7: 0] = i_wb_data[ 7: 0];
-		if (i_wb_addr == 6 && i_wb_sel[1] && i_wb_we)
+		if (i_wb_addr == ADDR_LO && i_wb_sel[1] && i_wb_we)
 			wide_address[15: 8] = i_wb_data[15: 8];
-		if (i_wb_addr == 6 && i_wb_sel[2] && i_wb_we)
+		if (i_wb_addr == ADDR_LO && i_wb_sel[2] && i_wb_we)
 			wide_address[23:16] = i_wb_data[23:16];
-		if (i_wb_addr == 6 && i_wb_sel[3] && i_wb_we)
+		if (i_wb_addr == ADDR_LO && i_wb_sel[3] && i_wb_we)
 			wide_address[31:24] = i_wb_data[31:24];
 
-		if (i_wb_addr == 7 && i_wb_sel[0] && i_wb_we)
+		if (i_wb_addr == ADDR_HI && i_wb_sel[0] && i_wb_we)
 			wide_address[39:32] = i_wb_data[ 7: 0];
-		if (i_wb_addr == 7 && i_wb_sel[1] && i_wb_we)
+		if (i_wb_addr == ADDR_HI && i_wb_sel[1] && i_wb_we)
 			wide_address[47:40] = i_wb_data[15: 8];
-		if (i_wb_addr == 7 && i_wb_sel[2] && i_wb_we)
+		if (i_wb_addr == ADDR_HI && i_wb_sel[2] && i_wb_we)
 			wide_address[55:48] = i_wb_data[23:16];
-		if (i_wb_addr == 7 && i_wb_sel[3] && i_wb_we)
+		if (i_wb_addr == ADDR_HI && i_wb_sel[3] && i_wb_we)
 			wide_address[63:56] = i_wb_data[31:24];
 
 		wide_address[63:ADDRESS_WIDTH] = 0;
@@ -361,6 +369,7 @@ module	satatrn_fsm #(
 		r_device   <= 0;
 		r_count    <= 0;
 		r_busy     <= 0;
+		return_to_idle <= 1'b0;
 		r_icc      <= 0;
 		r_port     <= 0;
 		// }}}
@@ -382,6 +391,7 @@ module	satatrn_fsm #(
 		r_device   <= 0;
 		r_count    <= 0;
 		r_busy     <= 0;
+		return_to_idle <= 1'b0;
 		r_icc      <= 0;
 		r_port     <= 0;
 		// }}}
@@ -414,13 +424,14 @@ module	satatrn_fsm #(
 		if (s_pkt_valid && s_active && s_posn == 3)
 			r_count <= s_data[15:0];
 
+		return_to_idle <= 1'b0;
 		case(fsm_state)
 		FSM_IDLE: begin
 			// {{{
 			r_busy <= 1'b0;
 			if (i_wb_stb && !o_wb_stall && i_wb_we && !m_valid)
 			case(i_wb_addr)
-			0: begin
+			ADDR_CMD: begin	// ADDR_CMD
 				// {{{
 				if (i_wb_sel[1])
 				begin
@@ -433,7 +444,7 @@ module	satatrn_fsm #(
 					r_features[7:0] <= i_wb_data[31:24];
 				end
 			// }}}
-			1: begin
+			1: begin	// ADDR_LBALO
 				// {{{
 				if (i_wb_sel[0])
 					r_lba[7:0] <= i_wb_data[7:0];
@@ -445,7 +456,7 @@ module	satatrn_fsm #(
 					r_device     <= i_wb_data[31:24];
 				end
 				// }}}
-			2: begin
+			2: begin	// ADDR_LBAHI
 				// {{{
 				if (i_wb_sel[0])
 					r_lba[31:24] <= i_wb_data[7:0];
@@ -457,7 +468,7 @@ module	satatrn_fsm #(
 					r_features[15:8] <= i_wb_data[31:24];
 				end
 				// }}}
-			3: begin
+			3: begin	// ADDR_COUNT
 				// {{{
 				if (i_wb_sel[0])
 					r_count[7:0]  <= i_wb_data[7:0];
@@ -469,12 +480,12 @@ module	satatrn_fsm #(
 					r_control     <= i_wb_data[31:24];
 				end
 				// }}}
-			6: begin // r_dma_address
+			6: begin // ADDR_LO, r_dma_address
 				// {{{
 				r_dma_address <= wide_address[ADDRESS_WIDTH-1:0];
 				end
 				// }}}
-			7: begin // r_dma_address
+			7: begin // ADDR_HI, r_dma_address
 				// {{{
 				r_dma_address <= wide_address[ADDRESS_WIDTH-1:0];
 				end
@@ -535,8 +546,10 @@ module	satatrn_fsm #(
 			last_rx_fis <= 1'b0;
 			if (s_pkt_valid && s_sop
 					&& s_data[7:0] == FIS_REG_TO_HOST)
+			begin
+				return_to_idle <= 1'b1;
 				fsm_state <= FSM_IDLE;
-			else if (s_pkt_valid && s_sop
+			end else if (s_pkt_valid && s_sop
 					&& s_data[7:0] == FIS_PIO_SETUP)
 			begin
 				fsm_state <= FSM_PIO_RXDATA;
@@ -553,15 +566,20 @@ module	satatrn_fsm #(
 			o_s2mm_request     <= 1;
 			if (s_pkt_valid && s_sop
 					&& s_data[7:0] == FIS_REG_TO_HOST)
+			begin
 				fsm_state <= (last_rx_fis) ? FSM_IDLE : FSM_PIO_IN_SETUP;
-			end
+				if (last_rx_fis)
+					return_to_idle <= 1'b1;
+			end end
 			// }}}
 		FSM_PIO_OUT_SETUP: begin
 			// {{{
 			// Transmit data via PIO
 			if (s_pkt_valid && s_sop && s_data[7:0] == FIS_REG_TO_HOST)
+			begin
 				fsm_state <= FSM_IDLE;
-			else if (s_pkt_valid && s_sop
+				return_to_idle <= 1'b1;
+			end else if (s_pkt_valid && s_sop
 					&& s_data[7:0] == FIS_PIO_SETUP)
 			begin
 				fsm_state <= FSM_PIO_TXDATA;
@@ -593,8 +611,10 @@ module	satatrn_fsm #(
 			// {{{
 			// Wrap up DMA read from device
 			if (!i_s2mm_busy)
+			begin
 				fsm_state <= FSM_IDLE;
-			end
+				return_to_idle <= 1'b1;
+			end end
 			// }}}
 		FSM_DMA_OUT_SETUP: begin // DMA write to device
 			// {{{
@@ -603,8 +623,10 @@ module	satatrn_fsm #(
 			o_tran_len <= (dma_length > 2048) ? 2048 : dma_length[LGLENGTH:0];
 			if (s_pkt_valid && s_sop
 					&& s_data[7:0] == FIS_REG_TO_HOST)
+			begin
 				fsm_state <= FSM_IDLE;
-			else if (s_pkt_valid && s_sop
+				return_to_idle <= 1'b1;
+			end else if (s_pkt_valid && s_sop
 					&& s_data[7:0] == FIS_DMA_ACTIVATE)
 			begin
 				fsm_state <= FSM_DMA_TXDATA;
@@ -627,12 +649,15 @@ module	satatrn_fsm #(
 			// {{{
 			if (s_pkt_valid && s_sop
 					&& s_data[7:0] == FIS_REG_TO_HOST)
+			begin
 				fsm_state <= FSM_IDLE;
-			end
+				return_to_idle <= 1'b1;
+			end end
 			// }}}
 		default: begin
 			// {{{
 			fsm_state <= FSM_IDLE;
+			return_to_idle <= 1'b1;
 			end
 			// }}}
 		endcase
@@ -707,6 +732,8 @@ module	satatrn_fsm #(
 		endcase
 	end
 	// }}}
+
+	assign	o_int = r_int || return_to_idle;
 
 	// Keep Verilator happy
 	// {{{

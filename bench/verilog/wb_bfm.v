@@ -140,13 +140,27 @@ module	wb_bfm #(
 		read_busaddr= fifo_wraddr;
 
 
-		do begin
+		@(posedge i_clk)
+		begin
+			err_flag <= (o_wb_cyc && i_wb_err);
+		end wait(!i_clk);
+		while(!err_flag && (!o_wb_cyc || fifo_rdaddr != read_busaddr))
+		begin
 			@(posedge i_clk)
+			begin
 				err_flag <= (o_wb_cyc && i_wb_err);
-			wait(!i_clk);
-		end while(!err_flag && (!o_wb_cyc || fifo_rdaddr != read_busaddr));
+			end wait(!i_clk);
+		end
 
-		do begin
+		@(posedge i_clk)
+		begin
+			if (o_wb_cyc && i_wb_ack)
+				dat <= i_wb_data;
+			if (o_wb_cyc && i_wb_err)
+				err_flag <= 1'b1;
+		end wait(!i_clk);
+		while(!err_flag && o_wb_cyc);
+		begin
 			@(posedge i_clk)
 			begin
 				if (o_wb_cyc && i_wb_ack)
@@ -154,7 +168,7 @@ module	wb_bfm #(
 				if (o_wb_cyc && i_wb_err)
 					err_flag <= 1'b1;
 			end wait(!i_clk);
-		end while(!err_flag && o_wb_cyc);
+		end
 
 		if (OPT_DEBUG)
 			$display("BFM:READ  @0x%04x --> %08x", addr, dat);

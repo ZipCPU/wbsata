@@ -2,7 +2,7 @@
 //
 // Filename:	bench/verilog/wb2axip/memdev.v
 // {{{
-// Project:	A Wishbone SATA controller
+// Project:	SD-Card controller
 //
 // Purpose:	This file is really simple: it creates an on-chip memory,
 //		accessible via the wishbone bus, that can be used in this
@@ -20,12 +20,10 @@
 // }}}
 // Copyright (C) 2015-2024, Gisselquist Technology, LLC
 // {{{
-// This file is part of the WBSATA project.
-//
-// The WBSATA project is a free software (firmware) project: you may
-// redistribute it and/or modify it under the terms of  the GNU General Public
-// License as published by the Free Software Foundation, either version 3 of
-// the License, or (at your option) any later version.
+// This program is free software (firmware): you can redistribute it and/or
+// modify it under the terms of the GNU General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or (at
+// your option) any later version.
 //
 // This program is distributed in the hope that it will be useful, but WITHOUT
 // ANY WARRANTY; without even the implied warranty of MERCHANTIBILITY or
@@ -33,8 +31,9 @@
 // for more details.
 //
 // You should have received a copy of the GNU General Public License along
-// with this program.  If not, please see <http://www.gnu.org/licenses/> for a
-// copy.
+// with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
+// target there if the PDF file isn't present.)  If not, see
+// <http://www.gnu.org/licenses/> for a copy.
 // }}}
 // License:	GPL, v3, as defined and found on www.gnu.org,
 // {{{
@@ -42,8 +41,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-`default_nettype none
-`timescale	1ns/1ps
+`default_nettype	none
 // }}}
 module	memdev #(
 		// {{{
@@ -72,7 +70,6 @@ module	memdev #(
 	wire	[(AW-1):0]	w_addr;
 	wire	[(DW/8-1):0]	w_sel;
 
-	// Declare the memory itself
 	reg	[(DW-1):0]	mem	[0:((1<<AW)-1)];
 	// }}}
 
@@ -81,17 +78,13 @@ module	memdev #(
 	generate if (HEXFILE != 0)
 	begin : PRELOAD_MEMORY
 
-		initial	$readmemh(HEXFILE, mem);
+		initial $readmemh(HEXFILE, mem);
 
 	end endgenerate
-	////////////////////////////////////////////////////////////////////////
-	//
-	// Add a clock cycle to memory accesses (if required)
-	// {{{
-	////////////////////////////////////////////////////////////////////////
-	//
-	//
+	// }}}
 
+	// Delay request if necessary
+	// {{{
 	generate if (EXTRACLOCK == 0)
 	begin : NO_EXTRA_CLOCK
 		// {{{
@@ -137,21 +130,15 @@ module	memdev #(
 		// }}}
 	end endgenerate
 	// }}}
-	////////////////////////////////////////////////////////////////////////
-	//
+
 	// Read from memory
 	// {{{
 	always @(posedge i_clk)
 		o_wb_data <= mem[w_addr];
 	// }}}
-	////////////////////////////////////////////////////////////////////////
-	//
-	// (Optionally) Write to memory
-	// {{{
-	////////////////////////////////////////////////////////////////////////
-	//
-	//
 
+	// Write to memory (if not a ROM)
+	// {{{
 	generate if (!OPT_ROM)
 	begin : WRITE_TO_MEMORY
 		// {{{
@@ -168,10 +155,12 @@ module	memdev #(
 	end else begin : VERILATOR_ROM
 
 		// Make Verilator happy
+		// Verilator coverage_off
 		// Verilator lint_off UNUSED
 		wire	rom_unused;
 		assign	rom_unused = &{ 1'b0, w_wstb, w_data, w_sel };
 		// Verilator lint_on  UNUSED
+		// Verilator coverage_on
 `endif
 		// }}}
 	end endgenerate
@@ -179,19 +168,15 @@ module	memdev #(
 
 	// o_wb_ack
 	// {{{
-	////////////////////////////////////////////////////////////////////////
-	//
-	//
-
 	initial	o_wb_ack = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset)
 		o_wb_ack <= 1'b0;
 	else
 		o_wb_ack <= (w_stb)&&(i_wb_cyc);
+	// }}}
 
 	assign	o_wb_stall = 1'b0;
-	// }}}
 
 	// Make verilator happy
 	// {{{
@@ -224,9 +209,6 @@ module	memdev #(
 	always @(*)
 	if (!f_past_valid)
 		assume(i_reset);
-
-	localparam	F_LGDEPTH = 2;
-	wire	[F_LGDEPTH-1:0]	f_nreqs, f_nacks, f_outstanding;
 
 	fwb_slave #(
 		.AW(AW), .DW(DW), .F_MAX_STALL(1), .F_MAX_ACK_DELAY(2),
@@ -275,14 +257,12 @@ module	memdev #(
 	always @(*)
 		assert(!o_wb_stall);
 
-	wire	[(AW-1):0]	f_addr;
-	reg	[31:0]		f_data;
-
 	assign	f_addr = $anyconst;
 	initial	assume(mem[f_addr] == f_data);
 
 	generate if (!OPT_ROM)
 	begin : F_MATCH_WRITES
+		integer	ik;
 
 		always @(posedge i_clk)
 		if (w_wstb && f_addr == w_addr)

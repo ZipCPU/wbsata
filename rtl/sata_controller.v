@@ -61,8 +61,8 @@ module	sata_controller #(
 		input	wire	[3:0]	i_wb_sel,
 		//
 		output	wire		o_wb_stall,
-		output	reg		o_wb_ack,
-		output	reg	[31:0]	o_wb_data,
+		output	wire		o_wb_ack,
+		output	wire	[31:0]	o_wb_data,
 		// }}}
 		// Wishbone DMA <-> memory interface
 		// {{{
@@ -76,6 +76,7 @@ module	sata_controller #(
 		input	wire [DW-1:0]	i_dma_data,
 		input	wire		i_dma_err,
 		// }}}
+		output	wire		o_int,		// Interrupt
 		// Link <-> PHY interface
 		// {{{
 		input	wire		i_rxphy_clk,
@@ -162,6 +163,7 @@ module	sata_controller #(
 		.i_dma_ack(i_dma_ack), .i_dma_data(i_dma_data),
 		.i_dma_err(i_dma_err),
 		// }}}
+		.o_int(o_int),	// Interrupt
 		// Link layer interface
 		// {{{
 		// h2d == host (fpga)   to device (disk)
