@@ -52,7 +52,7 @@ module	sata_phy #(
 		parameter [0:0]	OPT_RXBUFFER = 1'b1,
 		parameter [0:0]	OPT_TXBUFFER = 1'b1,
 		parameter [0:0]	OPT_AUTO_ALIGN = 1'b1,	// Detect & ALIGN_p
-		parameter [1:0]	SATA_GEN = 3
+		parameter [1:0]	SATA_GEN = 1
 		// }}}
 	) (
 		// {{{
@@ -113,7 +113,7 @@ module	sata_phy #(
 	// {{{
 	wire	i_realign, syncd, resyncd, rx_polarity, tx_polarity,
 		rx_cdr_hold, raw_tx_clk, gtx_refck;
-	wire	power_down, qpll_lock;
+	wire	power_down, qpll_lock, tx_pll_lock;
 	wire	ign_cpll_locked, ign_rx_comma;
 	reg	pll_reset, gtx_reset;
 	wire	[63:0]	raw_rx_data;
@@ -235,7 +235,7 @@ module	sata_phy #(
 		.o_pll_reset(tx_pll_reset),
 		.i_pll_locked(qpll_lock),
 		.o_gtx_reset(tx_gtx_reset),
-		.i_gtx_reset_done(tx_reset_done),
+		.i_gtx_reset_done(tx_reset_done && tx_pll_lock),
 		.i_aligned(1'b1),	// We don't wait for TX alignment
 		.o_err(tx_watchdog_err),
 		.o_user_ready(tx_user_ready),
@@ -542,7 +542,7 @@ module	sata_phy #(
 		// fLineRate = fPLLCLKout * 2 / TXOUT_DIV
 		//	Given fPLLClkout = 6GHz, to be in QPLL range, thus...
 		//	= 6, 3, or 1.5GHz depending on SATA_GEN below
-		.RXOUT_DIV((SATA_GEN == 1) ? 8 : ((SATA_GEN == 2) ? 4 : 2)),
+		.RXOUT_DIV((SATA_GEN <= 1) ? 8 : ((SATA_GEN == 2) ? 4 : 2)),
 		// }}}
 		// RX Margin Analysis (Eye Scan)
 		// {{{
@@ -815,7 +815,7 @@ module	sata_phy #(
 		.TXUSERRDY(tx_user_ready),
 		.TXRESETDONE(tx_reset_done),
 		.PCSRSVDOUT(),	// Open, unconnected, 16b reserved output
-		.TXDLYSRESET(1'b0),
+		.TXDLYSRESET(tx_user_ready && !tx_reset_done),
 		.TXDLYSRESETDONE(),
 		// }}}
 		// RX Init and reset ports
@@ -943,7 +943,7 @@ module	sata_phy #(
 		.RXCDRHOLD(rx_cdr_hold),
 		.RXCDROVRDEN(1'b0),
 		.RXCDRRESETRSV(1'b0),
-		.RXRATE(3'h0),	// Use the RXOUT_DIV attribute
+		.RXRATE((SATA_GEN==3) ? 3'd2 : (SATA_GEN==2) ? 3'd3 : 3'd4),
 		.RXCDRLOCK(),	// Open / no connect
 		// }}}
 		// RX Fabric clock output control ports
@@ -1067,7 +1067,7 @@ module	sata_phy #(
 		.TXPHALIGNEN(1'b0),	// Disable manual phase alignment
 		.TXPHINIT(1'b0),	// Tie low when using auto alignment
 		.TXPHOVRDEN(1'b0),	// Normal operation
-		.TXDLYBYPASS(1'b0),	// !!!! Transciever wizard ties high
+		.TXDLYBYPASS(1'b1),	// Must=1 for a normal clock out in SIM
 		.TXDLYEN(1'b0),
 		.TXDLYHOLD(1'b0),
 		.TXDLYOVRDEN(1'b0),
@@ -1084,9 +1084,14 @@ module	sata_phy #(
 		// }}}
 		// TX Fabric Clock Output control ports
 		// {{{
-		.TXOUTCLKSEL(OPT_TXBUFFER ? 3'b010 : 3'b011), // CLKPMA : REFCLK_DIV1
-		.TXRATE(3'h0),	// Use the TXOUT_DIV divider value
+		.TXOUTCLKSEL(3'b001),
+		// Divide by 2, 4, or 8 -- see mapping
+		.TXRATE((SATA_GEN==3) ? 3'd2 : (SATA_GEN==2) ? 3'd3 : 3'd4),
 		.TXOUTCLKFABRIC(),	// Redundant, used by Xilinx for testing
+		// QPLL_REFCK speed (6.6666ns => 150MHz)
+		// At ... QPLL_CLK speed (0.1670 =~> 6GHz)
+		//		/ 4 (b/c of TX_INT_DATA_WIDTH = 1)
+		//		/ 5 (b/c of TX_DATA_WIDTH = 40)
 		.TXOUTCLK(raw_tx_clk),	// --> send to BUFG if OPT_TXBUFFER, else MMCM
 		.TXOUTCLKPCS(),		// Redundant, use TXOUTCLK instead
 		.TXRATEDONE(),
@@ -1139,8 +1144,8 @@ module	sata_phy #(
 		.GTRSVD(16'h00),	// From wizard
 		.TSTIN(20'hf_ff_ff),
 		.RXMONITORSEL(2'b00),
-		.RXSYSCLKSEL(2'b01),	// Clock source from QPLL
-		.TXSYSCLKSEL(2'b01),	// Clock source from QPLL
+		.RXSYSCLKSEL(2'b11),	// Clock source from QPLL
+		.TXSYSCLKSEL(2'b11),	// Clock source from QPLL
 		.LOOPBACK(3'b0),	// 0 => No TX->RX Loop back
 		.TXBUFDIFFCTRL(3'h4),
 		.PCSRSVDIN2(5'h00),
@@ -1168,11 +1173,56 @@ module	sata_phy #(
 `ifdef	IVERILOG
 		assign	o_tx_clk = raw_tx_clk;
 `else
-		BUFG txbuf ( .I(raw_tx_clk), .O(o_tx_clk));
+		wire		mmcm_feedback_unbuffered,
+				mmcm_feedback, tx_unbuffered;
+
+		// The MMCM
+		// {{{
+		/*
+		PLLE2_BASE #(
+			.CLKFBOUT_MULT(32),	// 37.5 * 24 = 900MHz
+			.DIVCLK_DIVIDE(1),
+			.CLKIN1_PERIOD(26.66),	// 37.5MHz
+			.CLKOUT_DIVIDE(1),
+			.CLKOUT0_DIVIDE(32)
+		) u_txmmcm (
+			.CLKIN1(raw_tx_clk),
+			//
+			.CLKFBOUT(mmcm_feedback_unbuffered),
+			.CLKFBIN(mmcm_feedback),
+			//
+			.CLKOUT0(tx_unbuffered),
+			.PWRDWN(1'b0),
+			.RST(tx_gtx_reset),
+			.LOCKED(tx_pll_lock)
+		);
+		*/
+		assign	tx_pll_lock = qpll_lock;
+		assign	tx_unbuffered = raw_tx_clk;
+		// }}}
+
+		// mmcm_feedback BUFG
+		// {{{
+		/*
+		BUFG
+		feedback(
+			.I(mmcm_feedback_unbuffered),
+			.O(mmcm_feedback)
+		);
+		*/
+		// }}}
+
+		// Final TX BUFG
+		// {{{
+		BUFG
+		txbuf (
+			.I(tx_unbuffered), .O(o_tx_clk));
+		// }}}
 `endif
 	
 	end else begin : NO_TXBUF
-		assign	o_tx_clk = raw_tx_clk;
+		// assign	o_tx_clk = raw_tx_clk;
+		BUFG txbuf ( .I(raw_tx_clk), .O(o_tx_clk));
 /*
 		MMCM #(
 		) tx_mmcm (
@@ -1182,6 +1232,8 @@ module	sata_phy #(
 
 		BUFX txbuf (.I(tx_clk_unbuffered), .O(o_tx_clk));
 */
+
+		assign	tx_pll_lock = qpll_lock;
 	end endgenerate
 
 endmodule

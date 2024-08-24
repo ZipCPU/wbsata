@@ -68,7 +68,7 @@ module	sata_phyinit #(
 				FSM_READY        = 4'h8;
 
 	reg	[3:0]	fsm_state;
-	reg	[11:0]	fsm_counter;
+	reg	[6:0]	fsm_counter;
 	reg		fsm_zero;
 
 	reg		r_cdr_zerowait;
@@ -185,7 +185,7 @@ module	sata_phyinit #(
 		FSM_PLL_WAIT: if (fsm_zero && pll_locked)
 			begin
 			fsm_state   <= FSM_GTX_RESET;
-			fsm_counter <= 4;
+			fsm_counter <= 50;	// Guarantee 500ns GTX reset
 			fsm_zero    <= 0;
 			end
 		FSM_GTX_RESET: if (fsm_zero)
