@@ -46,7 +46,7 @@ module	sata_reset #(
 		input	wire	i_tx_clk,
 		input	wire	i_rx_clk,
 		// Verilator lint_off SYNCASYNCNET
-		input	wire	i_reset,	// In TX clock domain
+		input	wire	i_reset_n,	// In TX clock domain
 		// Verilator lint_on  SYNCASYNCNET
 		input	wire	i_reset_request,
 		input	wire	i_phy_ready,
@@ -119,8 +119,8 @@ module	sata_reset #(
 	// Move the RX COM detect signals to the TX clock domain
 	// {{{
 
-	always @(posedge i_rx_clk or negedge i_reset)
-	if (!i_reset)
+	always @(posedge i_rx_clk or negedge i_reset_n)
+	if (!i_reset_n)
 		{ rx_reset, rx_pipe_reset } <= -1;
 	else
 		{ rx_reset, rx_pipe_reset } <= { rx_pipe_reset, 1'b0 };
@@ -162,8 +162,8 @@ module	sata_reset #(
 		.o_sig(rx_align)
 	);
 
-	always @(posedge i_tx_clk or negedge i_reset)
-	if (!i_reset)
+	always @(posedge i_tx_clk or negedge i_reset_n)
+	if (!i_reset_n)
 	begin
 		{ ck_rx_elecidle, pipe_rx_elecidle } <= 0;
 		{ ck_rx_cominit, pipe_rx_cominit } <= 0;
@@ -185,8 +185,8 @@ module	sata_reset #(
 					<= { pipe_phy_ready, i_phy_ready };
 	end
 
-	always @(posedge i_tx_clk or negedge i_reset)
-	if (!i_reset)
+	always @(posedge i_tx_clk or negedge i_reset_n)
+	if (!i_reset_n)
 	begin
 		{ ck_rx_align, pipe_rx_align } <= 0;
 	end else begin
@@ -204,7 +204,7 @@ module	sata_reset #(
 	initial	o_tx_elecidle = 1'b1;
 	initial	o_link_up     = 1'b0;
 	always @(posedge i_tx_clk)
-	if (i_reset)
+	if (!i_reset_n)
 	begin
 		fsm_state <= HR_RESET;
 
@@ -232,20 +232,22 @@ module	sata_reset #(
 			// Wait for the PHY to come out of any reset before
 			// continuing
 			if (ck_phy_ready)
+			begin
 				fsm_state <= HR_ISSUE_COMINIT;
-			end
+				o_tx_cominit  <= 1'b1;
+			end end
 		HR_ISSUE_COMINIT: begin
 			// {{{
 			// Issue COMRESET, and wait for the PHY (not the device
 			// yet) to acknowledge it before continuing.
-			o_tx_cominit  <= 1'b1;
 			o_tx_elecidle <= 1'b1;
 			o_rx_cdrhold  <= 1'b1;
 
-			if (o_tx_cominit && !rx_cominit && i_tx_comfinish
-							&& !i_reset_request)
+			if (i_tx_comfinish)
+			begin
 				fsm_state <= HR_AWAIT_RXCOMINIT;
-			end
+				o_tx_elecidle <= 1'b1;
+			end end
 			// }}}
 		HR_AWAIT_RXCOMINIT: begin
 			// {{{
@@ -280,6 +282,7 @@ module	sata_reset #(
 			o_tx_elecidle <= 1'b1;
 			o_rx_cdrhold  <= 1'b1;
 			fsm_state <= HR_COMWAKE;
+			o_tx_comwake  <= 1'b1;
 			end
 			// }}}
 		HR_COMWAKE: begin
@@ -287,9 +290,8 @@ module	sata_reset #(
 			// Now, issue a COMWAKE signal and wait for the PHY
 			// to acknowledge we've sent it.
 			o_tx_elecidle <= 1'b1;
-			o_tx_comwake  <= 1'b1;
 			o_rx_cdrhold  <= 1'b1;
-			if (o_tx_comwake && i_tx_comfinish)
+			if (i_tx_comfinish)
 				fsm_state <= HR_AWAIT_RXCOMWAKE;
 			end
 			// }}}
@@ -376,7 +378,7 @@ module	sata_reset #(
 	// Otherwise, if we get stuck in this synchronization FSM, then we
 	// want to know it, and hence we want to try to sync again from scratch.
 	always @(posedge i_tx_clk)
-	if (i_reset || fsm_state == HR_RESET
+	if (!i_reset_n || fsm_state == HR_RESET
 			|| fsm_state == HR_AWAIT_RXCLRWAKE
 			|| o_tx_cominit || o_link_up)
 	begin
@@ -397,7 +399,7 @@ module	sata_reset #(
 	// the SATA spec says we need to wait at least 116.3ns after detecting
 	// the release of COMWAKE to start looking for alignment.
 	always @(posedge i_tx_clk)
-	if (i_reset)
+	if (!i_reset_n)
 	begin
 		min_alignment_counter <= MIN_ALIGNMENT[LGALIGN-1:0];
 		check_alignment <= 1'b0;

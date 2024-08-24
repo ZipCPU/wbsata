@@ -250,7 +250,7 @@ module	sata_controller #(
 	u_reset (
 		.i_tx_clk(i_txphy_clk),
 		.i_rx_clk(i_rxphy_clk),
-		.i_reset(tx_link_reset),	// TX clock domain
+		.i_reset_n(!tx_link_reset),	// TX clock domain
 		//
 		.i_reset_request(link_reset_request),
 		//

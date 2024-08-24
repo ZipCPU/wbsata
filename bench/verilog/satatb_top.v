@@ -468,6 +468,7 @@ module	satatb_top;
 		.i_rxphy_data(sata_rxphy_data),
 
 		.i_txphy_clk(sata_txphy_clk),
+		.i_txphy_ready(sata_txphy_ready),
 		.o_txphy_primitive(sata_txphy_primitive),
 		.o_txphy_data(sata_txphy_data),
 		//
