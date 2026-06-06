@@ -352,7 +352,7 @@ module mdl_satacmd (
                 m_last = 1'b1;
             else if (send_pio_setup && cnt == 5)
                 m_last = 1'b1;
-            else if (send_data_fis && (read_index == (current_lba[23:2] - 1)))
+            else if (send_data_fis && (read_index == (BYTES_PER_SECTOR/4 - 1)))
                 m_last = 1'b1;
         end else begin
             m_last = 1'b0;

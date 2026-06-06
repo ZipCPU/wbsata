@@ -60,6 +60,7 @@ module	satatrn_fsm #(
 	) (
 		// {{{
 		input	wire			i_clk, i_reset,
+		output	reg			o_phy_reset,
 		// WB Control interface
 		// {{{
 		input	wire			i_wb_cyc, i_wb_stb, i_wb_we,
@@ -132,7 +133,8 @@ module	satatrn_fsm #(
 				ADDR_LBALO	= 1,
 				ADDR_LBAHI	= 2,
 				ADDR_COUNT	= 3,
-				ADDR_LO		= 6,
+				ADDR_PHY	= 5,
+				ADDR_LO		= 6,	// Assumes LITTLE_ENDIAN
 				ADDR_HI		= 7;
 	localparam	[2:0]	CMD_NONDATA	= 0,
 				CMD_PIO_READ	= 1,
@@ -156,6 +158,8 @@ module	satatrn_fsm #(
 	reg		known_cmd;
 	reg	[63:0]	wide_address;
 	reg	[3:0]	fsm_state;
+	reg		reset_hold, link_dropped, tran_failed;
+	wire	[31:0]	w_phy_data;
 
 	reg	[47:0]	r_lba;
 	reg	[15:0]	r_features;
@@ -405,7 +409,7 @@ module	satatrn_fsm #(
 		r_dma_fail  <= 0;
 		last_fis	<= 0;
 		// }}}
-	end else if (!i_link_up || i_tran_err)
+	end else if (!i_link_up || i_tran_err || o_phy_reset)
 	begin
 		// {{{
 		fsm_state      <= FSM_IDLE;
@@ -512,6 +516,11 @@ module	satatrn_fsm #(
 					r_icc         <= i_wb_data[23:16];
 				if (i_wb_sel[3])
 					r_control     <= i_wb_data[31:24];
+				end
+				// }}}
+			ADDR_PHY: begin	// ADDR_PHY
+				// {{{
+				// Processed elsewhere ...
 				end
 				// }}}
 			ADDR_LO: begin // ADDR_LO, r_dma_address
@@ -712,6 +721,49 @@ module	satatrn_fsm #(
 			// }}}
 		endcase
 	end
+
+	initial	o_phy_reset  = 1'b1;
+	initial	reset_hold   = 1'b0;
+	initial	link_dropped = 1'b0;
+	initial	tran_failed  = 1'b0;
+	always @(posedge i_clk)
+	if (i_reset)
+	begin
+		o_phy_reset <= 1'b1;
+		reset_hold  <= 1'b0;
+		link_dropped <= 1'b0;
+		tran_failed  <= 1'b0;
+	end else if (soft_reset)
+	begin
+		o_phy_reset <= 1'b1;
+		reset_hold  <= 1'b0;
+		link_dropped <= 1'b0;
+		tran_failed  <= 1'b0;
+	end else begin
+		o_phy_reset <= o_phy_reset && reset_hold;
+
+		link_dropped <= link_dropped || !i_link_up;
+		tran_failed  <= tran_failed  || i_tran_err;
+
+		if (i_wb_stb && !o_wb_stall && i_wb_we && i_wb_addr == ADDR_PHY)
+		begin
+			if (i_wb_sel[0])
+			begin
+				o_phy_reset <= i_wb_data[0];
+				reset_hold  <= &i_wb_data[1:0];
+
+				if (i_wb_data[2])
+					link_dropped <= 1'b0;
+				if (i_wb_data[3])
+					tran_failed  <= 1'b0;
+			end
+		end
+	end
+
+	assign	w_phy_data = { 24'h0,
+			fsm_state,
+			tran_failed, link_dropped, reset_hold, o_phy_reset };
+
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -787,6 +839,7 @@ module	satatrn_fsm #(
 		ADDR_LBAHI: o_wb_data <= { r_features[15:8], r_lba[47:24] };
 		ADDR_COUNT: o_wb_data <= { r_control, r_icc, r_count };
 		// 5: o_wb_data <= { fsm_state, dma_err, i_link_up, o_link_reset }; // ...
+		ADDR_PHY: o_wb_data <= w_phy_data;
 		ADDR_LO: o_wb_data <= wide_address[31:0];
 		ADDR_HI: o_wb_data <= wide_address[63:32];
 		default: begin end

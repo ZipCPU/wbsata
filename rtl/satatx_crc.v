@@ -40,6 +40,9 @@
 // }}}
 module	satatx_crc #(
 		// {{{
+`ifdef	FORMAL
+		parameter		LGMX = 16,
+`endif
 		parameter	[31:0]	POLYNOMIAL = 32'h04c1_1db7,
 		parameter	[31:0]	INITIAL_CRC = 32'h5232_5032,
 		parameter	[0:0]	OPT_LOWPOWER = 1'b1
@@ -61,6 +64,7 @@ module	satatx_crc #(
 `ifdef	FORMAL
 		, output wire [31:0]	f_crc
 		, output wire [1:0]	f_state
+		, output wire [LGMX-1:0] fs_word, fm_word
 `endif
 		// }}}
 	);
@@ -172,7 +176,6 @@ module	satatx_crc #(
 ////////////////////////////////////////////////////////////////////////////////
 `ifdef	FORMAL
 	reg	f_past_valid;
-	reg	[15:0]	fs_word, fm_word;
 
 	initial	f_past_valid = 0;
 	always @(posedge S_AXI_ACLK)
@@ -191,16 +194,16 @@ module	satatx_crc #(
 		assert(M_AXIS_TVALID);
 
 	always @(*)
-	if (S_AXI_ARESETN && M_AXIS_TLAST)
-		assert(M_AXIS_TVALID);
-
-	always @(*)
 	if (S_AXI_ARESETN && state == S_CRC && M_AXIS_TVALID)
 		assert(!M_AXIS_TLAST);
 
 	always @(*)
-	if (S_AXI_ARESETN && M_AXIS_TVALID && M_AXIS_TLAST)
+	if (S_AXI_ARESETN && M_AXIS_TLAST)
+	begin
+		assert(M_AXIS_TVALID);
 		assert(crc == INITIAL_CRC);
+		assert(state == S_IDLE);
+	end
 
 	assign	f_crc = crc;
 	assign	f_state = state;

@@ -74,7 +74,8 @@ module	sata_crc_wrapper #(
 	(* anyconst *)	reg		f_ckval;
 	(* anyconst *)	reg	[31:0]	f_ckword;
 	(* anyconst *)	reg	[31:0]	f_value;
-	reg	[LGMX-1:0]	fs_word, s_word, m_word, tx_word;
+	reg	[LGMX-1:0]	fs_word, s_word, m_word, tx_word,
+				tx_sword, tx_mword;
 
 	wire		tx_valid, tx_ready, tx_last;
 	wire	[W-1:0]	tx_data;
@@ -85,7 +86,8 @@ module	sata_crc_wrapper #(
 	// }}}
 
 	satatx_crc #(
-		.OPT_LOWPOWER(OPT_LOWPOWER)
+		.OPT_LOWPOWER(OPT_LOWPOWER),
+		.LGMX(LGMX)
 	) tx (
 		// {{{
 		.S_AXI_ACLK(i_clk), .S_AXI_ARESETN(!i_reset),
@@ -97,7 +99,8 @@ module	sata_crc_wrapper #(
 		.M_AXIS_TDATA(tx_data), .M_AXIS_TLAST(tx_last),
 		//
 		.f_crc(tx_crc),
-		.f_state(tx_state)
+		.f_state(tx_state),
+		.fs_word(tx_sword), .fm_word(tx_mword)
 		// }}}
 	);
 
@@ -151,7 +154,7 @@ module	sata_crc_wrapper #(
 	// Inducing errors, verifying !TABORT
 	// {{{
 	always @(*)
-	if (phy_reliable || !tx_valid)
+	if (phy_reliable && tx_valid)
 		assume(phy_errors == 0);
 
 	always @(*)
@@ -215,6 +218,9 @@ module	sata_crc_wrapper #(
 		else
 			s_word <= s_word + 1;
 	end
+
+	always @(posedge i_clk)
+		assert(s_word == tx_sword);
 	// }}}
 
 	// tx_word
@@ -230,6 +236,9 @@ module	sata_crc_wrapper #(
 		else
 			tx_word <= tx_word + 1;
 	end
+
+	always @(posedge i_clk)
+		assert(tx_mword == tx_word);
 
 	always @(posedge i_clk)
 		assert(fs_word == tx_word);
@@ -250,6 +259,7 @@ module	sata_crc_wrapper #(
 	end
 	// }}}
 
+	// All packets must be at least 2 words long
 	always @(*)
 	if (s_word < 1)
 		assume(!S_AXIS_TVALID || !S_AXIS_TLAST);
@@ -423,6 +433,8 @@ module	sata_crc_wrapper #(
 		assume(phy_ready);
 	end
 
+	always @(*)
+		assume(phy_ready);
 	// }}}
 // }}}
 endmodule

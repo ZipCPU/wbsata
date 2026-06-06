@@ -61,6 +61,7 @@ module	sata_phy #(
 		// External reference clock
 		input	wire		i_ref_sata_clk,
 		//
+		input	wire		i_user_reset,
 		output	wire		o_ready, o_init_err,
 		// Wishbone DRP Control
 		// {{{
@@ -190,13 +191,13 @@ module	sata_phy #(
 	rx_init (
 		// {{{
 		.i_clk(i_wb_clk),
-		.i_reset(i_reset || qpll_reset),
+		.i_reset(i_reset || i_user_reset || qpll_reset),
 		.i_power_down(1'b0),
 		.o_pll_reset(ign_rx_pll_reset),
-		.i_pll_locked(pll_locked || !USE_QPLL),
+		.i_pll_locked(pll_locked || !USE_QPLL), // && tx_pll_lock),
 		//
 		.o_gtx_reset(rx_gtx_reset),
-		.i_gtx_reset_done(rx_reset_done),
+		.i_gtx_reset_done(rx_reset_done && tx_pll_lock),
 		//
 		.i_phy_clk(o_rx_clk),
 		//
@@ -269,7 +270,7 @@ module	sata_phy #(
 	tx_init (
 		// {{{
 		.i_clk(i_wb_clk),
-		.i_reset(i_reset),
+		.i_reset(i_reset || i_user_reset),
 		.i_power_down(1'b0), // power_down),
 		.o_pll_reset(tx_pll_reset),
 		.i_pll_locked(pll_locked || !USE_QPLL),
@@ -309,9 +310,10 @@ module	sata_phy #(
 
 	assign	i_drp_clk    = i_wb_clk;
 	assign	i_drp_data   = i_wb_data[15:0];
-	assign	i_drp_enable = (i_wb_stb && !o_wb_stall && (&i_wb_sel[1:0]));
+	assign	i_drp_enable = (i_wb_stb && !o_wb_stall && (&i_wb_sel[1:0]))
+				&& !i_user_reset;
 	assign	i_drp_we     = i_drp_enable && i_wb_we;
-	assign	o_wb_stall   = !pending_ack;
+	assign	o_wb_stall   = pending_ack;
 	assign	i_drp_addr   = i_wb_addr[8:0];
 	assign	pll_drp_enable = i_drp_enable && !i_wb_addr[9];
 	assign	gtx_drp_enable = i_drp_enable &&  i_wb_addr[9];
@@ -320,7 +322,7 @@ module	sata_phy #(
 
 	initial	pending_ack = 1'b0;
 	always @(posedge i_drp_clk)
-	if (i_reset)
+	if (i_reset || i_user_reset)
 		pending_ack <= 1'b0;
 	else if (pending_ack)
 		pending_ack <= !pll_drp_ready && !gtx_drp_ready;
@@ -329,21 +331,25 @@ module	sata_phy #(
 
 	initial	drop_wb_ack = 1'b0;
 	always @(posedge i_drp_clk)
-	if (i_reset)
+	if (i_reset || i_user_reset)
 		drop_wb_ack <= 1'b0;
 	else if (pll_drp_ready || gtx_drp_ready)
 		drop_wb_ack <= 1'b0;
 	else if (pending_ack && !i_wb_cyc)
 		drop_wb_ack <= 1'b1;
+	else if (!pending_ack)
+		drop_wb_ack <= 1'b0;
 
 	initial	o_wb_ack = 1'b0;
 	always @(posedge i_drp_clk)
 	if (i_reset || !i_wb_cyc)
 		o_wb_ack <= 1'b0;
+	else if (pending_ack && i_user_reset)
+		o_wb_ack <= 1'b1;
 	else if (pending_ack)
 		o_wb_ack <= (pll_drp_ready || gtx_drp_ready) && !drop_wb_ack;
 	else
-		o_wb_ack <= i_wb_stb && (i_wb_sel[1:0] != 2'b11);
+		o_wb_ack <= !i_drp_enable;
 
 	always @(posedge i_drp_clk)
 	begin
@@ -501,15 +507,15 @@ module	sata_phy #(
 			.QPLL_CLKOUT_CFG		(4'b0000),
 			// The following are Xilinx's recommended settings
 			// {{{
-			// .QPLL_LOCK_CFG			(16'h21E8),
-			// .QPLL_LPF			(4'hf)
-			// These settings do not work.
+			.QPLL_LOCK_CFG			(16'h21E8),
+			.QPLL_LPF			(4'hf)
+			// These settings have not worked.
 			// }}}
 			// The following settings *work* (for tx ...), but are
 			// not the recommend settings
 			// {{{
-			.QPLL_LOCK_CFG			(16'h05e8),
-			.QPLL_LPF			(4'hd)
+			// .QPLL_LOCK_CFG			(16'h05e8),
+			// .QPLL_LPF			(4'hd)
 			// }}}
 			// }}}
 		) u_gtxclk (
@@ -912,7 +918,7 @@ module	sata_phy #(
 		// [6:4] to be set to 3'b100
 		// [3] 1'b0 selects sysclk, 1'b1 selects port CLKRSVD
 		// We match GTX wizard in all but bit 8
-		.PCS_RSVD_ATTR(48'h100),		// Reserved	// !!!!
+		.PCS_RSVD_ATTR(48'h100),		// Reserved
 		.PMA_RSV4(32'h00000000),
 		.SIM_RECEIVER_DETECT_PASS("TRUE"),
 		.SIM_RESET_SPEEDUP("FALSE"),
@@ -992,7 +998,7 @@ module	sata_phy #(
 		.CPLLPD(power_down),	// Keep powered up
 		.RXPD(power_down ? 2'b11 : 2'b00),	// Rx power down
 		.TXPD(power_down ? 2'b11 : 2'b00),	// Tx power down
-		.TXPDELECIDLEMODE(1'b1), // Power down on async input (always 0)
+		.TXPDELECIDLEMODE(1'b0), // Power down on async input (always 0)
 		.RXPHDLYPD(power_down && OPT_RXBUFFER),
 		.TXPHDLYPD(power_down && OPT_TXBUFFER),
 		// }}}
@@ -1030,6 +1036,11 @@ module	sata_phy #(
 		// }}}
 		// Digital monitor
 		// {{{
+		// OOB clock must run <= line rate / (3 * runlength)
+		//	= 1500 Mbps / 3 * runlength <= 500 / runlength
+		//	(But ... what is the runlength?  40?)
+		//	TX Clk is running at 37MHz, so ... this is *not* less
+		//	than 500 / 40.  It is less than 500 / 10.
 		.CLKRSVD(4'h0),
 		.PCSRSVDIN(16'h0),	// Not really using this
 		.DMONITOROUT(),		// Unused, no connect
@@ -1323,21 +1334,22 @@ module	sata_phy #(
 		assign	o_tx_clk = raw_tx_clk;
 `else
 		wire		mmcm_feedback_unbuffered,
-				mmcm_feedback, tx_unbuffered;
+				mmcm_feedback, tx_unbuffered, buf_tx_clk;
 
 		// The MMCM
 		// {{{
-		/*
-		PLLE2_BASE #(
-			.CLKFBOUT_MULT(32),	// 37.5 * 24 = 900MHz
+		// PLLE2_BASE
+		MMCME2_BASE
+		#(
+			.CLKFBOUT_MULT_F(32.0),	// 37.5 * 24 = 900MHz
 			.DIVCLK_DIVIDE(1),
 			.CLKIN1_PERIOD(26.66),	// 37.5MHz
-			.CLKOUT_DIVIDE(1),
-			.CLKOUT0_DIVIDE(32)
+			.CLKOUT0_DIVIDE_F(32.0)
 		) u_txmmcm (
-			.CLKIN1(raw_tx_clk),
+			.CLKIN1(buf_tx_clk),
 			//
 			.CLKFBOUT(mmcm_feedback_unbuffered),
+			// .CLKFBOUTB(mmcm_feedback_unbuffered_n),
 			.CLKFBIN(mmcm_feedback),
 			//
 			.CLKOUT0(tx_unbuffered),
@@ -1345,20 +1357,26 @@ module	sata_phy #(
 			.RST(tx_gtx_reset),
 			.LOCKED(tx_pll_lock)
 		);
-		*/
-		assign	tx_pll_lock = pll_locked;
-		assign	tx_unbuffered = raw_tx_clk;
+		// assign	tx_pll_lock = pll_locked;
+		// assign	tx_unbuffered = raw_tx_clk;
+		// }}}
+
+		// raw_tx_clk BUFG
+		// {{{
+		BUFH
+		raw_tx_buf (
+			.I(raw_tx_clk),
+			.O(buf_tx_clk)
+		);
 		// }}}
 
 		// mmcm_feedback BUFG
 		// {{{
-		/*
 		BUFG
 		feedback(
 			.I(mmcm_feedback_unbuffered),
 			.O(mmcm_feedback)
 		);
-		*/
 		// }}}
 
 		// Final TX BUFG

@@ -12,8 +12,8 @@ smtbmc
 
 [script]
 read -formal satatb_bwrap.v
-read -formal satatb_8b10b.v
-read -formal satatb_10b8b.v
+read -formal mdl_s8b10b.v
+read -formal mdl_s10b8b.v
 --pycode-begin--
 cmd = "hierarchy -top satatb_bwrap"
 output(cmd)
@@ -22,5 +22,5 @@ prep -top satatb_bwrap
 
 [files]
 satatb_bwrap.v
-../verilog/satatb_8b10b.v
-../verilog/satatb_10b8b.v
+../verilog/mdl_s8b10b.v
+../verilog/mdl_s10b8b.v

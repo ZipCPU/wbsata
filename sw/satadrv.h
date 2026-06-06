@@ -1,17 +1,17 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	bench/formal/satatb_bwrap.v
+// Filename:	sw/satadrv.h
 // {{{
 // Project:	A Wishbone SATA controller
 //
-// Purpose:	Verify that the tables are invertable
+// Purpose:	
 //
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2022-2025, Gisselquist Technology, LLC
+// Copyright (C) 2025, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -35,39 +35,24 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-`default_nettype none
 // }}}
-module	satatb_bwrap (
-		input	wire	[9:0]	i_data,
-		output	wire	[8:0]	o_data
-	);
+#ifndef	SATADRV_H
+#define	SATADRV_H
+#include <stdint.h>
 
-	wire		valid_input;
-	wire	[10:0]	w_data;
+typedef	struct SATA_S {
+	volatile uint32_t	s_cmd, s_lbalo, s_lbahi, s_count;
+	volatile uint32_t	s_unused, s_phy;
+	volatile void		*s_dma;
+	volatile uint32_t	s_unused_tail;
+} SATA;
 
-	mdl_s8b10b
-	u_8b10b (
-		.S_DATA(i_data),
-		.M_DATA(w_data)
-	);
+struct	SATADRV_S;
 
-	mdl_s10b8b
-	u_10b8b (
-		.S_DATA(w_data),
-		.M_DATA(o_data)
-	);
-
-	assign	valid_input = !i_data[8] || i_data == { 3'h7, 5'd28 }
-				|| i_data[7:0] == { 3'h5, 5'd28 };
-	
-	always @(*)
-	if (valid_input)
-	begin
-		assert(o_data[8:0] == i_data[8:0]);
-		assert(o_data != 9'h1ff);
-	end
-
-	// else if (o_data[8])
-		// assert(o_data == 9'h1ff);
-
-endmodule
+extern	struct	SATADRV_S *sata_init(SATA *dev);
+extern	int	sata_write(struct SATADRV_S *dev, const unsigned sector,
+				const unsigned count, const char *buf);
+extern	int	sata_read(struct SATADRV_S *dev, const unsigned sector,
+				const unsigned count, char *buf);
+extern	int	sata_ioctl(struct SATADRV_S *dev, char cmd, char *buf);
+#endif

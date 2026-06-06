@@ -80,7 +80,7 @@ SBYFLAGS := -j2 -f
 crc: sata_crc
 sata_crc: $(CRC)_prf/PASS $(CRC)_cvr/PASS
 $(CRC)_prf/PASS: $(CRC).sby $(CRC)_wrapper.v $(RTL)/$(RXCRC).v $(RTL)/$(TXCRC).v $(AXIN)
-	$(NOJOBSERVER) sby $(SBYFLAGS) $(CRC).sby prf
+	$(NOJOBSERVER) sby -j8 -f $(CRC).sby prf
 $(CRC)_cvr/PASS: $(CRC).sby $(CRC)_wrapper.v $(RTL)/$(RXCRC).v $(RTL)/$(TXCRC).v $(AXIN)
 	$(NOJOBSERVER) sby $(SBYFLAGS) $(CRC).sby cvr
 ## }}}
@@ -190,7 +190,7 @@ $(PEXTEND)_cvr/PASS: $(PEXTEND).sby $(RTL)/$(PEXTEND).v
 ## {{{
 bwrap: $(BWRAP)
 $(BWRAP): $(BWRAP)_prf/PASS
-$(BWRAP)_prf/PASS: ## $(BWRAP).sby $(BWRAP).v ../verilog/satatb_8b10b.v ../verilog/satatb_10b8b.v
+$(BWRAP)_prf/PASS: $(BWRAP).sby $(BWRAP).v ../verilog/mdl_s8b10b.v ../verilog/mdl_s10b8b.v
 	$(NOJOBSERVER) sby $(SBYFLAGS) $(BWRAP).sby prf
 ## }}}
 

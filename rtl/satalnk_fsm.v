@@ -156,24 +156,28 @@ module	satalnk_fsm (
 			// }}}
 		L_NOCOMMERR: begin
 			// {{{
-			link_state <= L_NOCOMM;
-			m_phy_data <= P_ALIGN;
+			if (m_phy_ready) begin
+				link_state <= L_NOCOMM;
+				m_phy_data <= P_ALIGN;
+			end
 			o_ready     <= 0;
 			end
 			// }}}
 		L_NOCOMM: begin
 			// {{{
-			if (i_phy_ready)
+			if (i_phy_ready) begin
 				link_state <= L_SENDALIGN;
-			m_phy_data <= P_ALIGN;
+				m_phy_data <= P_ALIGN;
+			end
 			o_ready     <= 0;
 			end
 			// }}}
 		L_SENDALIGN: begin
 			// {{{
-			if (m_phy_ready)
+			if (m_phy_ready) begin
 				link_state <= L_IDLE;
-			m_phy_data <= P_ALIGN;
+				m_phy_data <= P_ALIGN;
+			end
 			o_ready     <= 0;
 			end
 			// }}}
@@ -195,27 +199,29 @@ module	satalnk_fsm (
 					link_state <= L_SENDCHKRDY;
 			end end
 			// }}}
-		L_SYNCESCAPE: if (m_phy_ready) begin
+		L_SYNCESCAPE: begin
 			// {{{
-			m_phy_data <= P_SYNC;
-			if (i_rx_valid && (i_rx_data == P_X_RDY
+			if (m_phy_ready) begin
+				m_phy_data <= P_SYNC;
+				if (i_rx_valid && (i_rx_data == P_X_RDY
 					|| i_rx_data == P_SYNC))
 				link_state <= L_IDLE;
 			end
+		end
 			// }}}
 		// }}}
 		// Transmit states
 		// {{{
 		L_SENDCHKRDY: begin
 			// {{{
-			m_phy_data <= P_X_RDY;
-			if (i_rx_valid && i_rx_data[32] && m_phy_ready)
+			if (m_phy_ready)
 			begin
-				if (i_rx_data == P_R_RDY)
+				m_phy_data <= P_X_RDY;
+				if (i_rx_valid && i_rx_data[32] && i_rx_data == P_R_RDY)
 				begin
 					link_state <= L_SENDDATA;
 					r_ready <= 1'b1;
-				end else if (i_rx_data == P_X_RDY)
+				end else if (i_rx_valid && i_rx_data[32] && i_rx_data == P_X_RDY)
 					link_state <= L_RCVWAITFIFO;
 			end end
 			// }}}
@@ -260,7 +266,9 @@ module	satalnk_fsm (
 			// }}}
 		L_RCVRHOLD: begin
 			// {{{
-			m_phy_data <= P_HOLDA;
+
+			if (m_phy_ready)
+				m_phy_data <= P_HOLDA;
 
 			if (i_rx_valid && i_rx_primitive && m_phy_ready)
 			begin
@@ -337,8 +345,11 @@ module	satalnk_fsm (
 		L_WAIT: begin
 			// {{{
 			// Wait here for the PHY to acknowledge receipt
-			m_phy_data <= P_WTRM;
-			link_state <= L_WAIT;
+			if (m_phy_ready) begin
+				m_phy_data <= P_WTRM;
+				link_state <= L_WAIT;
+			end
+
 			if (i_rx_valid && i_rx_primitive && m_phy_ready)
 			begin
 				if (i_rx_data[31:0] == P_SYNC[31:0])
@@ -361,7 +372,9 @@ module	satalnk_fsm (
 		// {{{
 		L_RCVCHKRDY: begin
 			// {{{
-			m_phy_data <= P_R_RDY;
+			if (m_phy_ready)
+				m_phy_data <= P_R_RDY;
+			
 			if (i_rx_valid && m_phy_ready)
 				link_state <= L_IDLE;
 			if (i_rx_valid && i_rx_primitive)
@@ -375,7 +388,9 @@ module	satalnk_fsm (
 			// }}}
 		L_RCVWAITFIFO: begin
 			// {{{
-			m_phy_data <= P_SYNC;
+			if (m_phy_ready)
+				m_phy_data <= P_SYNC;
+			
 			if (i_rx_valid && m_phy_ready)
 				link_state <= L_IDLE;
 			if (i_rx_valid && i_rx_primitive && m_phy_ready)
@@ -391,8 +406,11 @@ module	satalnk_fsm (
 			// }}}
 		L_RCVDATA: begin
 			// {{{
-			m_phy_data <= P_R_IP;
-			link_state <= L_RCVDATA;
+			if (m_phy_ready) begin
+				m_phy_data <= P_R_IP;
+				link_state <= L_RCVDATA;
+			end
+			
 			if (m_full)
 				link_state <= L_HOLD;
 			if (i_rx_valid && i_rx_primitive)
@@ -417,8 +435,11 @@ module	satalnk_fsm (
 			// }}}
 		L_HOLD: begin
 			// {{{
-			m_phy_data <= P_HOLD;
-			link_state <= L_HOLD;
+			if (m_phy_ready) begin
+				m_phy_data <= P_HOLD;
+				link_state <= L_HOLD;
+			end
+			
 			if (m_empty && m_phy_ready)
 				link_state <= L_RCVDATA;
 			if (i_rx_valid && i_rx_primitive)
@@ -437,7 +458,9 @@ module	satalnk_fsm (
 			// }}}
 		L_RCVHOLD: begin
 			// {{{
-			m_phy_data <= P_HOLDA;
+			if (m_phy_ready)
+				m_phy_data <= P_HOLDA;
+			
 			if (i_rx_valid)
 			begin
 				if (i_rx_data == P_HOLD)
@@ -455,7 +478,9 @@ module	satalnk_fsm (
 			// }}}
 		L_RCVEOF: begin
 			// {{{
-			m_phy_data <= P_R_IP;
+			if (m_phy_ready)
+				m_phy_data <= P_R_IP;
+			
 			if (m_last)
 				link_state <= L_GOODEND;
 			if (m_abort)
@@ -468,7 +493,9 @@ module	satalnk_fsm (
 		//	transport layer received something it wanted (or didn't)
 		L_GOODEND: begin
 			// {{{
-			m_phy_data <= P_R_OK;
+			if (m_phy_ready)
+				m_phy_data <= P_R_OK;
+			
 			if (i_rx_valid && i_rx_primitive)
 			begin
 				if (i_rx_data[31:0] == P_SYNC[31:0])
@@ -477,7 +504,9 @@ module	satalnk_fsm (
 			// }}}
 		L_BADEND: begin
 			// {{{
-			m_phy_data <= P_R_ERR;
+			if (m_phy_ready)
+				m_phy_data <= P_R_ERR;
+			
 			if (i_rx_valid && i_rx_primitive)
 			begin
 				if (i_rx_data[31:0] == P_SYNC[31:0])
@@ -492,7 +521,9 @@ module	satalnk_fsm (
 		// L_TPMPARTIAL:
 		// L_TPMSLUMBER:
 		L_PMDENY: begin
-			m_phy_data <= P_PMNAK;
+			if (m_phy_ready)
+				m_phy_data <= P_PMNAK;
+			
 			if (!i_rx_primitive)
 				link_state <= L_IDLE;
 			else if (i_rx_data == P_PMREQ_P

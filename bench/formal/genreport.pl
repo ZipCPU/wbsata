@@ -181,6 +181,8 @@ sub getstatus($) {
 			# print "<TR><TD>ERROR match</TD></TR>\n";
 		} if ($line =~ /terminating process/) {
 			$terminated = 1;
+		} if ($line =~ /engine.*induction:.*Trying in/) {
+			$terminated = 0;
 		} if ($line =~ /Checking cover/) {
 			$cvr = 1;
 		} if ($line =~ /engine_\d.induction/) {

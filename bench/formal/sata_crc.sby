@@ -10,6 +10,7 @@ cvr: depth 15
 
 [engines]
 smtbmc
+prf: smtbmc boolector
 
 [script]
 read -formal sata_crc_wrapper.v
