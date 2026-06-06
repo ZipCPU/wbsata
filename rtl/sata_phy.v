@@ -49,6 +49,7 @@
 module	sata_phy #(
 		// {{{
 		parameter	REFCLK_FREQUENCY = 150,	// MHz
+		parameter [0:0]	OPT_DRP = 1'b1,
 		parameter [0:0]	OPT_RXBUFFER = 1'b1,
 		parameter [0:0]	OPT_TXBUFFER = 1'b1,
 		parameter [0:0]	OPT_AUTO_ALIGN = 1'b1,	// Detect & ALIGN_p
@@ -71,6 +72,7 @@ module	sata_phy #(
 		output	wire		o_wb_stall,
 		output	reg		o_wb_ack,
 		output	reg	[31:0]	o_wb_data,
+		output	reg		o_wb_err,
 		// }}}
 		// Transmitter control
 		// {{{
@@ -300,91 +302,57 @@ module	sata_phy #(
 	////////////////////////////////////////////////////////////////////////
 	//
 	//
+
 	wire		i_drp_clk;
-	wire		i_drp_enable, i_drp_we, gtx_drp_enable, pll_drp_enable;
+	wire		i_drp_enable, i_drp_we,
+			gtx_drp_enable, pll_drp_enable;
 	wire	[9:0]	i_drp_addr;
 	wire	[15:0]	i_drp_data, pll_drp_data, gtx_drp_data;
 	wire		gtx_drp_ready, pll_drp_ready;
-	reg		pending_ack, drop_wb_ack;
 
 	assign	i_drp_clk    = i_wb_clk;
-	assign	i_drp_data   = i_wb_data[15:0];
-	assign	i_drp_enable = (i_wb_stb && !o_wb_stall && (&i_wb_sel[1:0]))
-				&& !i_user_reset;
-	assign	i_drp_we     = i_drp_enable && i_wb_we;
-	assign	o_wb_stall   = pending_ack;
-	assign	i_drp_addr   = i_wb_addr[8:0];
-	assign	pll_drp_enable = i_drp_enable && !i_wb_addr[9];
-	assign	gtx_drp_enable = i_drp_enable &&  i_wb_addr[9];
-	// assign	o_wb_data    = { 16'h0, o_drp_data };
-	// assign	o_wb_ack     = o_drp_ready;
 
-	initial	pending_ack = 1'b0;
-	always @(posedge i_drp_clk)
-	if (i_reset || i_user_reset)
-		pending_ack <= 1'b0;
-	else if (pending_ack)
-		pending_ack <= !pll_drp_ready && !gtx_drp_ready;
-	else if (i_wb_stb && !o_wb_stall)
-		pending_ack <= (&i_wb_sel[1:0]);
+	generate if (OPT_DRP)
+	begin : GEN_DRP
+		sata_drp #(
+			.LGWATCHDOG(6)
+		) u_drp (
+			.i_clk(i_wb_clk), .i_reset(i_reset), .i_soft_reset(i_user_reset),
+			.i_wb_cyc(i_wb_cyc), .i_wb_stb(i_wb_stb),
+			.i_wb_we(i_wb_we), .i_wb_addr(i_wb_addr),
+			.i_wb_data(i_wb_data), .i_wb_sel(i_wb_sel),
+			.o_wb_stall(o_wb_stall), .o_wb_ack(o_wb_ack),
+			.o_wb_data(o_wb_data), .o_wb_err(o_wb_err),
+			//
+			.o_drp_enable({ gtx_drp_enable, pll_drp_enable }),
+			.o_drp_we(i_drp_we),
+			.o_drp_addr(i_drp_addr),
+			.o_drp_data(i_drp_data),
+			.i_drp_ready({ gtx_drp_ready, pll_drp_ready }),
+			.i_drp_data({ gtx_drp_data, pll_drp_data }),
+			.o_debug(o_drpdebug)
+			// }}}
+		);
+	end else begin : NO_DRP
+		assign	o_drpdebug = 32'h0;
 
-	initial	drop_wb_ack = 1'b0;
-	always @(posedge i_drp_clk)
-	if (i_reset || i_user_reset)
-		drop_wb_ack <= 1'b0;
-	else if (pll_drp_ready || gtx_drp_ready)
-		drop_wb_ack <= 1'b0;
-	else if (pending_ack && !i_wb_cyc)
-		drop_wb_ack <= 1'b1;
-	else if (!pending_ack)
-		drop_wb_ack <= 1'b0;
+		assign	o_wb_stall = 1'b0;
+		assign	o_wb_ack   = 1'b0;
+		assign	o_wb_data  = 32'b0;
+		assign	o_wb_err   = i_wb_stb;
 
-	initial	o_wb_ack = 1'b0;
-	always @(posedge i_drp_clk)
-	if (i_reset || !i_wb_cyc)
-		o_wb_ack <= 1'b0;
-	else if (pending_ack && i_user_reset)
-		o_wb_ack <= 1'b1;
-	else if (pending_ack)
-		o_wb_ack <= (pll_drp_ready || gtx_drp_ready) && !drop_wb_ack;
-	else
-		o_wb_ack <= !i_drp_enable;
+		assign	i_drp_clk    = 1'b0;
+		assign	i_drp_data   = 16'h0;
+		assign	i_drp_enable = 1'b0;
+		assign	i_drp_we     = 1'b0;
+		assign	i_drp_addr   = 10'h0;
+		assign	{ gtx_drp_enable, pll_drp_enable } = 1'b0;
 
-	always @(posedge i_drp_clk)
-	begin
-		o_wb_data <= 32'h0;
-		if (gtx_drp_ready)
-			o_wb_data <= { 16'h0, gtx_drp_data };
-		if (pll_drp_ready)
-			o_wb_data <= { 16'h0, pll_drp_data };
-	end
+		assign	pll_drp_enable = 1'b0;
+		assign	gtx_drp_enable = 1'b0;
 
-	always @(*)
-	begin
-		o_drpdebug = 32'h0;
-		o_drpdebug[31]   = i_wb_cyc && i_wb_stb;
-		o_drpdebug[30]   = i_wb_cyc;
-		o_drpdebug[29]   = i_wb_stb;
-		o_drpdebug[28]   = i_wb_we;
-		o_drpdebug[27]   = o_wb_stall;	// = !pending_ack
-		o_drpdebug[26]   = o_wb_ack;
-		o_drpdebug[25]   = o_wb_err;
+	end endgenerate
 
-		o_drpdebug[24]   = pll_drp_enable;
-		o_drpdebug[23]   = gtx_drp_enable;
-		o_drpdebug[22]   = drop_wb_ack;
-		o_drpdebug[21]   = pll_drp_ready;
-		o_drpdebug[20]   = gtx_drp_ready;
-
-		if (gtx_drp_ready)
-			o_drpdebug[15:0] = gtx_drp_data;
-		else if (pll_drp_ready)
-			o_drpdebug[15:0] = pll_drp_data;
-		else if (i_drp_enable)
-			o_drpdebug[9:0]  = i_drp_addr;
-		else
-			o_drpdebug[15:0] = i_drp_data;
-	end
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
