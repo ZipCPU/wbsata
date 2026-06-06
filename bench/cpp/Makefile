@@ -1,8 +1,8 @@
 ################################################################################
 ##
-## Filename:	bench/cpp/Makefile
+## Filename:	./bench/cpp/Makefile
 ## {{{
-## Project:	SATA controller
+## Project:	A Wishbone SATA controller
 ##
 ## Purpose:	Build the verilator simulation environment for the SATA controller
 ##
@@ -10,12 +10,14 @@
 ##
 ################################################################################
 ## }}}
-## Copyright (C) 2023-2025
+## Copyright (C) 2023-2026, Gisselquist Technology, LLC
 ## {{{
-## This program is free software (firmware): you can redistribute it and/or
-## modify it under the terms of the GNU General Public License as published
-## by the Free Software Foundation, either version 3 of the License, or (at
-## your option) any later version.
+## This file is part of the WBSATA project.
+##
+## The WBSATA project is a free software (firmware) project: you may
+## redistribute it and/or modify it under the terms of  the GNU General Public
+## License as published by the Free Software Foundation, either version 3 of
+## the License, or (at your option) any later version.
 ##
 ## This program is distributed in the hope that it will be useful, but WITHOUT
 ## ANY WARRANTY; without even the implied warranty of MERCHANTIBILITY or
@@ -23,9 +25,8 @@
 ## for more details.
 ##
 ## You should have received a copy of the GNU General Public License along
-## with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
-## target there if the PDF file isn't present.)  If not, see
-## <http://www.gnu.org/licenses/> for a copy.
+## with this program.  If not, please see <http://www.gnu.org/licenses/> for a
+## copy.
 ## }}}
 ## License:	GPL, v3, as defined and found on www.gnu.org,
 ## {{{

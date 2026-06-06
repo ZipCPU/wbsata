@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	bench/cpp/memsim.cpp
+// Filename:	./bench/cpp/memsim.cpp
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -19,7 +19,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2023-2025, Gisselquist Technology, LLC
+// Copyright (C) 2023-2026, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //

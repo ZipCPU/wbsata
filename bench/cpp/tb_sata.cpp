@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	bench/cpp/tb_sata.cpp
+// Filename:	./bench/cpp/tb_sata.cpp
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -12,7 +12,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2025, Gisselquist Technology, LLC
+// Copyright (C) 2025-2026, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //

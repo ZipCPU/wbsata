@@ -1,6 +1,7 @@
 sata_crc*/
 sata_scrambler*/
 sata_framer*/
+sata_drp*/
 satalnk_align*/
 satalnk_rmcont*/
 satarx_crc*/

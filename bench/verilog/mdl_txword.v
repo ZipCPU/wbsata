@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	bench/verilog/mdl_txword.v
+// Filename:	./bench/verilog/mdl_txword.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -17,7 +17,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2023-2025, Gisselquist Technology, LLC
+// Copyright (C) 2023-2026, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //

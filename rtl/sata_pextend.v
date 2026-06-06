@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	rtl/sata_pextend.v
+// Filename:	./rtl/sata_pextend.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -11,7 +11,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2022-2025, Gisselquist Technology, LLC
+// Copyright (C) 2022-2026, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
