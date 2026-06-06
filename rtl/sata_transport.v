@@ -104,7 +104,9 @@ module	sata_transport #(
 		output	wire		o_tran_empty,
 		input	wire	[31:0]	i_tran_data,
 		input	wire		i_tran_last,
+		// Verilator lint_off SYNCASYNCNET
 		input	wire		i_tran_abort,
+		// Verilator lint_on  SYNCASYNCNET
 		//
 		input	wire		i_link_err, i_link_ready,
 		// }}}
