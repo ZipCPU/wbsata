@@ -57,6 +57,7 @@ module	sata_phy #(
 	) (
 		// {{{
 		input	wire		i_wb_clk, i_reset, i_ref_clk200,
+					i_user_reset,
 		// External reference clock
 		input	wire		i_ref_sata_clk,
 		//
@@ -107,6 +108,7 @@ module	sata_phy #(
 		input	wire		i_rx_p, i_rx_n,
 		// }}}
 		output	wire		o_refclk,
+		output	reg	[31:0]	o_drpdebug,
 		output	wire	[31:0]	o_debug
 		// }}}
 	);
@@ -357,6 +359,33 @@ module	sata_phy #(
 		if (pll_drp_ready)
 			o_wb_data <= { 16'h0, pll_drp_data };
 	end
+
+	always @(*)
+	begin
+		o_drpdebug = 32'h0;
+		o_drpdebug[31]   = i_wb_cyc && i_wb_stb;
+		o_drpdebug[30]   = i_wb_cyc;
+		o_drpdebug[29]   = i_wb_stb;
+		o_drpdebug[28]   = i_wb_we;
+		o_drpdebug[27]   = o_wb_stall;	// = !pending_ack
+		o_drpdebug[26]   = o_wb_ack;
+		o_drpdebug[25]   = o_wb_err;
+
+		o_drpdebug[24]   = pll_drp_enable;
+		o_drpdebug[23]   = gtx_drp_enable;
+		o_drpdebug[22]   = drop_wb_ack;
+		o_drpdebug[21]   = pll_drp_ready;
+		o_drpdebug[20]   = gtx_drp_ready;
+
+		if (gtx_drp_ready)
+			o_drpdebug[15:0] = gtx_drp_data;
+		else if (pll_drp_ready)
+			o_drpdebug[15:0] = pll_drp_data;
+		else if (i_drp_enable)
+			o_drpdebug[9:0]  = i_drp_addr;
+		else
+			o_drpdebug[15:0] = i_drp_data;
+	end
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -491,6 +520,7 @@ module	sata_phy #(
 			// }}}
 		) u_gtxclk (
 			// {{{
+			// Verilator lint_off PINCONNECTEMPTY
 			.QPLLREFCLKSEL(3'b001),		// GTREFCLK0 selected
 			.GTREFCLK0(i_ref_sata_clk),
 			// .GTREFCLK1(),		// Unused
@@ -535,6 +565,7 @@ module	sata_phy #(
 			.QPLLOUTRESET(1'b0)	// Reserved, must be set to 0
 			//
 			// }}}
+			// Verilator lint_on  PINCONNECTEMPTY
 			// }}}
 		);
 
@@ -901,6 +932,7 @@ module	sata_phy #(
 		// }}}
 	) u_gtx_channel (
 		// {{{
+		// Verilator lint_off PINCONNECTEMPTY
 		(* invertible_pin = "IS_RXUSRCLK_INVERTED" *)
 		.RXUSRCLK(o_rx_clk),
 		(* invertible_pin = "IS_RXUSRCLK2_INVERTED" *)
@@ -1271,6 +1303,7 @@ module	sata_phy #(
 		.PCSRSVDIN2(5'h00),
 		.PMARSVDIN(5'h00),
 		.PMARSVDIN2(5'h00)
+		// Verilator lint_on  PINCONNECTEMPTY
 		// }}}
 	);
 `endif
