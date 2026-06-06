@@ -57,7 +57,6 @@ module	sata_phy #(
 	) (
 		// {{{
 		input	wire		i_wb_clk, i_reset, i_ref_clk200,
-					i_user_reset,
 		// External reference clock
 		input	wire		i_ref_sata_clk,
 		//
