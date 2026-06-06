@@ -109,7 +109,7 @@ module	sata_phy #(
 		input	wire		i_rx_p, i_rx_n,
 		// }}}
 		output	wire		o_refclk,
-		output	reg	[31:0]	o_drpdebug,
+		output	wire	[31:0]	o_drpdebug,
 		output	wire	[31:0]	o_debug
 		// }}}
 	);
