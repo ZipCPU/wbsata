@@ -1,0 +1,209 @@
+[*]
+[*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
+[*] Tue May 27 10:26:40 2025
+[*]
+[dumpfile] "/home/sukru/ZN/Side_Job/sata/wbsata/bench/cpp/trace.vcd"
+[dumpfile_mtime] "Tue May 27 09:44:32 2025"
+[dumpfile_size] 1027603
+[savefile] "/home/sukru/ZN/Side_Job/sata/wbsata/bench/cpp/sata_controller.gtkw"
+[timestart] 1
+[size] 1920 1123
+[pos] 1919 -1
+*-22.674667 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] TOP.
+[treeopen] TOP.sata_controller.
+[treeopen] TOP.sata_controller.u_link.
+[treeopen] TOP.sata_controller.u_link.rx_packet.
+[treeopen] TOP.sata_controller.u_link.tx_packet.
+[treeopen] TOP.sata_controller.u_transport.
+[treeopen] TOP.sata_controller.u_transport.u_wbarbiter.
+[sst_width] 276
+[signals_width] 286
+[sst_expanded] 1
+[sst_vpaned_height] 344
+@800200
+-Controller
+@28
+TOP.i_clk
+TOP.i_rxphy_clk
+TOP.i_txphy_clk
+TOP.i_reset
+TOP.o_lnk_ready
+TOP.o_int
+@800200
+-WB
+@28
+TOP.i_wb_cyc
+TOP.i_wb_stb
+TOP.i_wb_we
+@22
+TOP.i_wb_sel[3:0]
+@28
+TOP.i_wb_addr[2:0]
+@22
+TOP.i_wb_data[31:0]
+@28
+TOP.o_wb_stall
+TOP.o_wb_ack
+@22
+TOP.o_wb_data[31:0]
+@1000200
+-WB
+@800200
+-DMA
+@28
+TOP.o_dma_cyc
+TOP.o_dma_stb
+TOP.o_dma_we
+@22
+TOP.o_dma_sel[3:0]
+TOP.o_dma_addr[29:0]
+TOP.o_dma_data[31:0]
+@28
+TOP.i_dma_ack
+TOP.i_dma_err
+TOP.i_dma_stall
+@22
+TOP.i_dma_data[31:0]
+@1000200
+-DMA
+@c00200
+-RX
+@28
+TOP.i_phy_ready
+TOP.i_rxphy_cominit
+TOP.i_rxphy_comwake
+@22
+TOP.i_rxphy_data[32:0]
+@28
+TOP.i_rxphy_elecidle
+TOP.i_rxphy_valid
+TOP.o_rxphy_cdrhold
+@1401200
+-RX
+@c00200
+-TX
+@28
+TOP.i_txphy_ready
+TOP.i_txphy_comfinish
+TOP.o_txphy_cominit
+TOP.o_txphy_comwake
+@22
+TOP.o_txphy_data[31:0]
+@28
+TOP.o_txphy_elecidle
+TOP.o_txphy_primitive
+TOP.o_phy_reset
+@1401200
+-TX
+@1000200
+-Controller
+@200
+-
+@c00200
+-Reset
+@28
+TOP.sata_controller.u_reset.i_rx_clk
+TOP.sata_controller.u_reset.i_tx_clk
+@22
+TOP.sata_controller.u_reset.fsm_state[3:0]
+@28
+TOP.sata_controller.u_reset.i_phy_ready
+TOP.sata_controller.u_reset.i_rx_cominit
+TOP.sata_controller.u_reset.i_rx_comwake
+TOP.sata_controller.u_reset.i_rx_elecidle
+TOP.sata_controller.u_reset.i_rx_valid
+@22
+TOP.sata_controller.u_reset.i_rx_data[32:0]
+@28
+TOP.sata_controller.u_reset.i_tx_comfinish
+TOP.sata_controller.u_reset.ck_rx_align
+TOP.sata_controller.u_reset.o_tx_cominit
+TOP.sata_controller.u_reset.o_tx_comwake
+TOP.sata_controller.u_reset.o_tx_elecidle
+TOP.sata_controller.u_reset.o_tx_ready
+TOP.sata_controller.u_reset.o_link_up
+@1401200
+-Reset
+@200
+-
+@800200
+-Transport
+@28
+TOP.sata_controller.u_transport.u_fsm.i_clk
+TOP.sata_controller.u_transport.u_fsm.i_reset
+TOP.sata_controller.u_transport.u_fsm.soft_reset
+TOP.sata_controller.u_transport.u_fsm.o_phy_reset
+TOP.sata_controller.u_transport.u_fsm.i_tran_err
+TOP.sata_controller.u_transport.u_fsm.i_link_up
+TOP.sata_controller.u_transport.u_fsm.known_cmd
+@22
+TOP.sata_controller.u_transport.u_fsm.fsm_state[3:0]
+@c00200
+-REGS
+@22
+TOP.sata_controller.u_transport.u_fsm.r_command[7:0]
+TOP.sata_controller.u_transport.u_fsm.r_control[7:0]
+TOP.sata_controller.u_transport.u_fsm.r_count[15:0]
+TOP.sata_controller.u_transport.u_fsm.r_device[7:0]
+TOP.sata_controller.u_transport.u_fsm.r_features[15:0]
+TOP.sata_controller.u_transport.u_fsm.r_lba[47:0]
+@1401200
+-REGS
+@800200
+-WB
+@28
+TOP.sata_controller.u_transport.u_fsm.i_wb_cyc
+TOP.sata_controller.u_transport.u_fsm.i_wb_stb
+TOP.sata_controller.u_transport.u_fsm.i_wb_we
+@22
+TOP.sata_controller.u_transport.u_fsm.i_wb_sel[3:0]
+@28
+TOP.sata_controller.u_transport.u_fsm.i_wb_addr[2:0]
+@22
+TOP.sata_controller.u_transport.u_fsm.i_wb_data[31:0]
+@28
+TOP.sata_controller.u_transport.u_fsm.o_wb_stall
+TOP.sata_controller.u_transport.u_fsm.o_wb_ack
+@22
+TOP.sata_controller.u_transport.u_fsm.o_wb_data[31:0]
+@1000200
+-WB
+-Transport
+@200
+-
+@800200
+-Link
+@28
+TOP.sata_controller.u_link.link_fsm.i_clk
+TOP.sata_controller.u_link.link_fsm.i_reset
+@24
+TOP.sata_controller.u_link.link_fsm.link_state[4:0]
+@28
+TOP.sata_controller.u_link.link_fsm.i_rx_primitive
+TOP.sata_controller.u_link.link_fsm.i_rx_valid
+@22
+TOP.sata_controller.u_link.link_fsm.i_rx_data[32:0]
+TOP.sata_controller.u_link.link_fsm.m_phy_data[32:0]
+@28
+TOP.sata_controller.u_link.link_fsm.o_ready
+@800200
+-AXI
+@28
+TOP.sata_controller.u_link.link_fsm.s_ready
+TOP.sata_controller.u_link.link_fsm.s_valid
+TOP.sata_controller.u_link.link_fsm.s_abort
+TOP.sata_controller.u_link.link_fsm.s_failed
+TOP.sata_controller.u_link.link_fsm.s_success
+TOP.sata_controller.u_link.link_fsm.s_last
+@22
+TOP.sata_controller.u_link.link_fsm.s_data[32:0]
+@28
+TOP.sata_controller.u_link.m_valid
+@22
+TOP.sata_controller.u_link.m_data[31:0]
+@1000200
+-AXI
+-Link
+[pattern_trace] 1
+[pattern_trace] 0

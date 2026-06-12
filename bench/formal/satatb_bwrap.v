@@ -45,13 +45,13 @@ module	satatb_bwrap (
 	wire		valid_input;
 	wire	[10:0]	w_data;
 
-	satatb_8b10b
+	mdl_s8b10b
 	u_8b10b (
 		.S_DATA(i_data),
 		.M_DATA(w_data)
 	);
 
-	satatb_10b8b
+	mdl_s10b8b
 	u_10b8b (
 		.S_DATA(w_data),
 		.M_DATA(o_data)

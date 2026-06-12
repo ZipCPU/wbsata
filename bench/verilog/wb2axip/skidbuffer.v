@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	bench/verilog/wb2axip/skidbuffer.v
+// Filename:	./bench/verilog/wb2axip/skidbuffer.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -57,7 +57,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2019-2025, Gisselquist Technology, LLC
+// Copyright (C) 2019-2026, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //

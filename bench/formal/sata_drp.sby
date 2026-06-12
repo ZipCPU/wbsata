@@ -1,0 +1,24 @@
+[tasks]
+prf
+cvr
+
+[options]
+prf: mode prove
+cvr: mode cover
+
+[engines]
+smtbmc
+
+[script]
+read -formal sata_drp.v
+read -formal fwb_slave.v
+--pycode-begin--
+cmd = "hierarchy -top sata_drp"
+output(cmd)
+--pycode-end--
+proc -norom
+prep -top sata_drp
+
+[files]
+fwb_slave.v
+../../rtl/sata_drp.v

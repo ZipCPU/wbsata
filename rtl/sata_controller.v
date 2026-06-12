@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	rtl/sata_controller.v
+// Filename:	./rtl/sata_controller.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -13,7 +13,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2021-2025, Gisselquist Technology, LLC
+// Copyright (C) 2021-2026, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -136,7 +136,6 @@ module	sata_controller #(
 	assign	cfg_continue_en  = 1'b1;
 	assign	cfg_scrambler_en = 1'b1;
 	assign	cfg_crc_en       = 1'b1;
-	assign	o_phy_reset	= i_reset;
 	assign	o_lnk_ready = link_ready;
 
 	initial	{ rx_linkup, rx_linkup_xpipe } = 2'b00;
@@ -155,6 +154,7 @@ module	sata_controller #(
 		// {{{
 		.i_clk(i_clk), .i_reset(i_reset),
 		.i_phy_clk(i_txphy_clk),
+		.o_phy_reset(o_phy_reset),
 		// Wishbone SOC interface
 		// {{{
 		.i_wb_cyc(i_wb_cyc), .i_wb_stb(i_wb_stb), .i_wb_we(i_wb_we),

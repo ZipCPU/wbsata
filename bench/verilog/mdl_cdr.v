@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	bench/verilog/mdl_cdr.v
+// Filename:	./bench/verilog/mdl_cdr.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -16,7 +16,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2024-2025, Gisselquist Technology, LLC
+// Copyright (C) 2024-2026, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //

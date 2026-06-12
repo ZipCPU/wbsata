@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	bench/verilog/testscript/satalib.v
+// Filename:	./bench/verilog/testscript/satalib.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -11,7 +11,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2025, Gisselquist Technology, LLC
+// Copyright (C) 2025-2026, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -310,12 +310,12 @@ begin
 end endtask
 
 // Add helper task to test PIO buffer read/write operations
-task test_pio_buffer(input [15:0] sector_count);
+task test_pio_buffer(input [7:0] sector_count);
 begin
     // Fill write buffer with pattern
-    // $display("\n Initializing the buffer with a test pattern...");
-    // fill_dma_buffer(ADDR_MEM, sector_count * BYTES_PER_SECTOR);
-    // #1000;
+    $display("\n Initializing the buffer with a test pattern...");
+    fill_dma_buffer(ADDR_MEM, sector_count * BYTES_PER_SECTOR);
+    #1000;
 
     // Write data to device's buffer
     sata_write_buffer(ADDR_MEM, sector_count);

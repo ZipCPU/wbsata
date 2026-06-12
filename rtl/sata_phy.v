@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	rtl/sata_phy.v
+// Filename:	./rtl/sata_phy.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -19,7 +19,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2021-2025, Gisselquist Technology, LLC
+// Copyright (C) 2021-2026, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -49,6 +49,7 @@
 module	sata_phy #(
 		// {{{
 		parameter	REFCLK_FREQUENCY = 150,	// MHz
+		parameter [0:0]	OPT_DRP = 1'b1,
 		parameter [0:0]	OPT_RXBUFFER = 1'b1,
 		parameter [0:0]	OPT_TXBUFFER = 1'b1,
 		parameter [0:0]	OPT_AUTO_ALIGN = 1'b1,	// Detect & ALIGN_p
@@ -71,6 +72,7 @@ module	sata_phy #(
 		output	wire		o_wb_stall,
 		output	reg		o_wb_ack,
 		output	reg	[31:0]	o_wb_data,
+		output	reg		o_wb_err,
 		// }}}
 		// Transmitter control
 		// {{{
@@ -107,6 +109,7 @@ module	sata_phy #(
 		input	wire		i_rx_p, i_rx_n,
 		// }}}
 		output	wire		o_refclk,
+		output	wire	[31:0]	o_drpdebug,
 		output	wire	[31:0]	o_debug
 		// }}}
 	);
@@ -192,13 +195,13 @@ module	sata_phy #(
 	rx_init (
 		// {{{
 		.i_clk(i_wb_clk),
-		.i_reset(i_reset || qpll_reset),
+		.i_reset(i_reset || i_user_reset || qpll_reset),
 		.i_power_down(1'b0),
 		.o_pll_reset(ign_rx_pll_reset),
-		.i_pll_locked(pll_locked || !USE_QPLL),
+		.i_pll_locked(pll_locked || !USE_QPLL), // && tx_pll_lock),
 		//
 		.o_gtx_reset(rx_gtx_reset),
-		.i_gtx_reset_done(rx_reset_done),
+		.i_gtx_reset_done(rx_reset_done && tx_pll_lock),
 		//
 		.i_phy_clk(o_rx_clk),
 		//
@@ -302,59 +305,57 @@ module	sata_phy #(
 	////////////////////////////////////////////////////////////////////////
 	//
 	//
+
 	wire		i_drp_clk;
-	wire		i_drp_enable, i_drp_we, gtx_drp_enable, pll_drp_enable;
+	wire		i_drp_enable, i_drp_we,
+			gtx_drp_enable, pll_drp_enable;
 	wire	[9:0]	i_drp_addr;
 	wire	[15:0]	i_drp_data, pll_drp_data, gtx_drp_data;
 	wire		gtx_drp_ready, pll_drp_ready;
-	reg		pending_ack, drop_wb_ack;
 
 	assign	i_drp_clk    = i_wb_clk;
-	assign	i_drp_data   = i_wb_data[15:0];
-	assign	i_drp_enable = (i_wb_stb && !o_wb_stall && (&i_wb_sel[1:0]));
-	assign	i_drp_we     = i_drp_enable && i_wb_we;
-	assign	o_wb_stall   = !pending_ack;
-	assign	i_drp_addr   = i_wb_addr[8:0];
-	assign	pll_drp_enable = i_drp_enable && !i_wb_addr[9];
-	assign	gtx_drp_enable = i_drp_enable &&  i_wb_addr[9];
-	// assign	o_wb_data    = { 16'h0, o_drp_data };
-	// assign	o_wb_ack     = o_drp_ready;
 
-	initial	pending_ack = 1'b0;
-	always @(posedge i_drp_clk)
-	if (i_reset)
-		pending_ack <= 1'b0;
-	else if (pending_ack)
-		pending_ack <= !pll_drp_ready && !gtx_drp_ready;
-	else if (i_wb_stb && !o_wb_stall)
-		pending_ack <= (&i_wb_sel[1:0]);
+	generate if (OPT_DRP)
+	begin : GEN_DRP
+		sata_drp #(
+			.LGWATCHDOG(6)
+		) u_drp (
+			.i_clk(i_wb_clk), .i_reset(i_reset), .i_soft_reset(i_user_reset),
+			.i_wb_cyc(i_wb_cyc), .i_wb_stb(i_wb_stb),
+			.i_wb_we(i_wb_we), .i_wb_addr(i_wb_addr),
+			.i_wb_data(i_wb_data), .i_wb_sel(i_wb_sel),
+			.o_wb_stall(o_wb_stall), .o_wb_ack(o_wb_ack),
+			.o_wb_data(o_wb_data), .o_wb_err(o_wb_err),
+			//
+			.o_drp_enable({ gtx_drp_enable, pll_drp_enable }),
+			.o_drp_we(i_drp_we),
+			.o_drp_addr(i_drp_addr),
+			.o_drp_data(i_drp_data),
+			.i_drp_ready({ gtx_drp_ready, pll_drp_ready }),
+			.i_drp_data({ gtx_drp_data, pll_drp_data }),
+			.o_debug(o_drpdebug)
+			// }}}
+		);
+	end else begin : NO_DRP
+		assign	o_drpdebug = 32'h0;
 
-	initial	drop_wb_ack = 1'b0;
-	always @(posedge i_drp_clk)
-	if (i_reset)
-		drop_wb_ack <= 1'b0;
-	else if (pll_drp_ready || gtx_drp_ready)
-		drop_wb_ack <= 1'b0;
-	else if (pending_ack && !i_wb_cyc)
-		drop_wb_ack <= 1'b1;
+		assign	o_wb_stall = 1'b0;
+		assign	o_wb_ack   = 1'b0;
+		assign	o_wb_data  = 32'b0;
+		assign	o_wb_err   = i_wb_stb;
 
-	initial	o_wb_ack = 1'b0;
-	always @(posedge i_drp_clk)
-	if (i_reset || !i_wb_cyc)
-		o_wb_ack <= 1'b0;
-	else if (pending_ack)
-		o_wb_ack <= (pll_drp_ready || gtx_drp_ready) && !drop_wb_ack;
-	else
-		o_wb_ack <= i_wb_stb && (i_wb_sel[1:0] != 2'b11);
+		assign	i_drp_clk    = 1'b0;
+		assign	i_drp_data   = 16'h0;
+		assign	i_drp_enable = 1'b0;
+		assign	i_drp_we     = 1'b0;
+		assign	i_drp_addr   = 10'h0;
+		assign	{ gtx_drp_enable, pll_drp_enable } = 1'b0;
 
-	always @(posedge i_drp_clk)
-	begin
-		o_wb_data <= 32'h0;
-		if (gtx_drp_ready)
-			o_wb_data <= { 16'h0, gtx_drp_data };
-		if (pll_drp_ready)
-			o_wb_data <= { 16'h0, pll_drp_data };
-	end
+		assign	pll_drp_enable = 1'b0;
+		assign	gtx_drp_enable = 1'b0;
+
+	end endgenerate
+
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -476,19 +477,20 @@ module	sata_phy #(
 			.QPLL_CLKOUT_CFG		(4'b0000),
 			// The following are Xilinx's recommended settings
 			// {{{
-			// .QPLL_LOCK_CFG			(16'h21E8),
-			// .QPLL_LPF			(4'hf)
-			// These settings do not work.
+			.QPLL_LOCK_CFG			(16'h21E8),
+			.QPLL_LPF			(4'hf)
+			// These settings have not worked.
 			// }}}
 			// The following settings *work* (for tx ...), but are
 			// not the recommend settings
 			// {{{
-			.QPLL_LOCK_CFG			(16'h05e8),
-			.QPLL_LPF			(4'hd)
+			// .QPLL_LOCK_CFG			(16'h05e8),
+			// .QPLL_LPF			(4'hd)
 			// }}}
 			// }}}
 		) u_gtxclk (
 			// {{{
+			// Verilator lint_off PINCONNECTEMPTY
 			.QPLLREFCLKSEL(3'b001),		// GTREFCLK0 selected
 			.GTREFCLK0(i_ref_sata_clk),
 			// .GTREFCLK1(),		// Unused
@@ -534,6 +536,7 @@ module	sata_phy #(
 			.QPLLOUTRESET(1'b0)	// Reserved, must be set to 0
 			//
 			// }}}
+			// Verilator lint_on  PINCONNECTEMPTY
 			// }}}
 		);
 
@@ -886,7 +889,7 @@ module	sata_phy #(
 		// [6:4] to be set to 3'b100
 		// [3] 1'b0 selects sysclk, 1'b1 selects port CLKRSVD
 		// We match GTX wizard in all but bit 8
-		.PCS_RSVD_ATTR(48'h100),		// Reserved	// !!!!
+		.PCS_RSVD_ATTR(48'h100),		// Reserved
 		.PMA_RSV4(32'h00000000),
 		.SIM_RECEIVER_DETECT_PASS("TRUE"),
 		.SIM_RESET_SPEEDUP("FALSE"),
@@ -900,6 +903,7 @@ module	sata_phy #(
 		// }}}
 	) u_gtx_channel (
 		// {{{
+		// Verilator lint_off PINCONNECTEMPTY
 		(* invertible_pin = "IS_RXUSRCLK_INVERTED" *)
 		.RXUSRCLK(o_rx_clk),
 		(* invertible_pin = "IS_RXUSRCLK2_INVERTED" *)
@@ -965,7 +969,7 @@ module	sata_phy #(
 		.CPLLPD(power_down),	// Keep powered up
 		.RXPD(power_down ? 2'b11 : 2'b00),	// Rx power down
 		.TXPD(power_down ? 2'b11 : 2'b00),	// Tx power down
-		.TXPDELECIDLEMODE(1'b1), // Power down on async input (always 0)
+		.TXPDELECIDLEMODE(1'b0), // Power down on async input (always 0)
 		.RXPHDLYPD(power_down && OPT_RXBUFFER),
 		.TXPHDLYPD(power_down && OPT_TXBUFFER),
 		// }}}
@@ -1003,6 +1007,11 @@ module	sata_phy #(
 		// }}}
 		// Digital monitor
 		// {{{
+		// OOB clock must run <= line rate / (3 * runlength)
+		//	= 1500 Mbps / 3 * runlength <= 500 / runlength
+		//	(But ... what is the runlength?  40?)
+		//	TX Clk is running at 37MHz, so ... this is *not* less
+		//	than 500 / 40.  It is less than 500 / 10.
 		.CLKRSVD(4'h0),
 		.PCSRSVDIN(16'h0),	// Not really using this
 		.DMONITOROUT(),		// Unused, no connect
@@ -1265,6 +1274,7 @@ module	sata_phy #(
 		.PCSRSVDIN2(5'h00),
 		.PMARSVDIN(5'h00),
 		.PMARSVDIN2(5'h00)
+		// Verilator lint_on  PINCONNECTEMPTY
 		// }}}
 	);
 `endif
@@ -1295,21 +1305,22 @@ module	sata_phy #(
 		assign	o_tx_clk = raw_tx_clk;
 `else
 		wire		mmcm_feedback_unbuffered,
-				mmcm_feedback, tx_unbuffered;
+				mmcm_feedback, tx_unbuffered, buf_tx_clk;
 
 		// The MMCM
 		// {{{
-		/*
-		PLLE2_BASE #(
-			.CLKFBOUT_MULT(32),	// 37.5 * 24 = 900MHz
+		// PLLE2_BASE
+		MMCME2_BASE
+		#(
+			.CLKFBOUT_MULT_F(32.0),	// 37.5 * 24 = 900MHz
 			.DIVCLK_DIVIDE(1),
 			.CLKIN1_PERIOD(26.66),	// 37.5MHz
-			.CLKOUT_DIVIDE(1),
-			.CLKOUT0_DIVIDE(32)
+			.CLKOUT0_DIVIDE_F(32.0)
 		) u_txmmcm (
-			.CLKIN1(raw_tx_clk),
+			.CLKIN1(buf_tx_clk),
 			//
 			.CLKFBOUT(mmcm_feedback_unbuffered),
+			// .CLKFBOUTB(mmcm_feedback_unbuffered_n),
 			.CLKFBIN(mmcm_feedback),
 			//
 			.CLKOUT0(tx_unbuffered),
@@ -1317,20 +1328,26 @@ module	sata_phy #(
 			.RST(tx_gtx_reset),
 			.LOCKED(tx_pll_lock)
 		);
-		*/
-		assign	tx_pll_lock = pll_locked;
-		assign	tx_unbuffered = raw_tx_clk;
+		// assign	tx_pll_lock = pll_locked;
+		// assign	tx_unbuffered = raw_tx_clk;
+		// }}}
+
+		// raw_tx_clk BUFG
+		// {{{
+		BUFH
+		raw_tx_buf (
+			.I(raw_tx_clk),
+			.O(buf_tx_clk)
+		);
 		// }}}
 
 		// mmcm_feedback BUFG
 		// {{{
-		/*
 		BUFG
 		feedback(
 			.I(mmcm_feedback_unbuffered),
 			.O(mmcm_feedback)
 		);
-		*/
 		// }}}
 
 		// Final TX BUFG

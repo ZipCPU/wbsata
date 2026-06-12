@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	rtl/sata_transport.v
+// Filename:	./rtl/sata_transport.v
 // {{{
 // Project:	A Wishbone SATA controller
 //
@@ -18,7 +18,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2021-2025, Gisselquist Technology, LLC
+// Copyright (C) 2021-2026, Gisselquist Technology, LLC
 // {{{
 // This file is part of the WBSATA project.
 //
@@ -62,6 +62,7 @@ module	sata_transport #(
 		input	wire		i_reset,
 		// Verilator lint_on  SYNCASYNCNET
 		input	wire		i_phy_clk,
+		output	wire		o_phy_reset,
 		// Wishbone SOC interface
 		// {{{
 		input	wire		i_wb_cyc, i_wb_stb, i_wb_we,
@@ -237,7 +238,7 @@ module	sata_transport #(
 		// {{{
 		.i_clk(i_clk), .i_reset(i_reset),
 		.i_phy_clk(i_phy_clk), .i_phy_reset_n(phy_reset_n),
-		.i_link_err(i_link_err),
+		.i_link_err(i_link_err || i_tran_abort),
 		//
 		.i_valid(i_tran_valid),
 		.i_data(i_tran_data),
@@ -258,6 +259,7 @@ module	sata_transport #(
 		.ADDRESS_WIDTH(ADDRESS_WIDTH), .DW(DW), .LGLENGTH(LGLENGTH)
 	) u_fsm (
 		.i_clk(i_clk), .i_reset(i_reset),
+		.o_phy_reset(o_phy_reset),
 		// Wishbone control inputs
 		// {{{
 		.i_wb_cyc(i_wb_cyc),	.i_wb_stb(i_wb_stb),
@@ -473,7 +475,7 @@ module	sata_transport #(
 		.BW(1+$clog2(DW/8)+DW), .LGFLEN(LGFIFO-$clog2(DW/8))
 	) u_txfifo (
 		// {{{
-		.i_clk(i_clk), .i_reset(i_reset || i_tran_abort),
+		.i_clk(i_clk), .i_reset(i_reset),
 		//
 		.i_wr(mm2sgear_valid), 
 		.i_data({ mm2sgear_last, mm2sgear_bytes, mm2sgear_data }),

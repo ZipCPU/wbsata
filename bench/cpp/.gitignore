@@ -1,0 +1,4 @@
+*.vcd
+/*.img
+/tb_sdspi
+/tb_sata

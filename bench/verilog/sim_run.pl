@@ -1,7 +1,7 @@
 #!/bin/perl
 ################################################################################
 ##
-## Filename:	bench/verilog/sim_run.pl
+## Filename:	./bench/verilog/sim_run.pl
 ## {{{
 ## Project:	A Wishbone SATA controller
 ##
@@ -13,7 +13,7 @@
 ##
 ################################################################################
 ## }}}
-## Copyright (C) 2016-2025, Gisselquist Technology, LLC
+## Copyright (C) 2016-2026, Gisselquist Technology, LLC
 ## {{{
 ## This file is part of the WBSATA project.
 ##
@@ -39,6 +39,7 @@
 ##
 ## }}}
 use Cwd;
+use File::Which;
 $path_cnt = @ARGV;
 
 $filelist = "sim_files.txt";
@@ -48,12 +49,32 @@ $linestr  = "----------------------------------------";
 $report   = "report.txt";
 $wbtoplvl = "satatb_top";
 $testd    = "test/";
-$vivado   = 0;
-$vivado_path = "/tools/Xilinx/Vivado/2024.1/bin/vivado"; # Path to Vivado executable
+$vivado   = 1;
+# Other potential simulators, such as Icarus or Verilator, don't yet have
+# (workable) models for the GTX transceiver, so they aren't (yet) supported
+# here.
+$vivado_path = which('vivado'); # "/tools/Xilinx/Vivado/2024.1/bin/vivado"; # Path to Vivado executable
 
-## Usage: perl sim_sim.pl all
+if ($vivado_path =~ /vivado$/) {
+	print "Vivado install found at $vivado_path\n";
+} else {
+	print "No Vivado install found\n";
+	exit -1;
+}
+
+## Usage:
+##	perl sim_sim.pl all
+##		(Run all tests using the default simulator: Vivado)
 ##   or
 ## 	perl sim_sim.pl <testcasename>
+##		(Run the given test(s) using the default simulator: Vivado)
+##   or
+## 	perl sim_sim.pl vivado [all]
+##		(Run all tests using Vivado, the "all" argument is optional)
+##   or
+## 	perl sim_sim.pl vivado <testcasename>
+##		(Run given tests using Vivado)
+##
 
 ## Process arguments
 ## {{{
@@ -62,7 +83,14 @@ print "Debug: Script started with " . scalar(@ARGV) . " arguments: " . join(", "
 
 if ($ARGV[0] eq "") {
 	print "No test cases given\n";
-	exit(0);
+	print "Usage:\n";
+	print "\tperl sim_run.pl all\n";
+	print "\t\tRuns all tests using Vivado (the only supported simulator)\n";
+	print "\tperl sim_run.pl vivado [all]\n";
+	print "\t\tRuns all tests using Vivado\n";
+	print "\tperl sim_run.pl vivado <testname>\n";
+	print "\t\tRuns the given tests using Vivado\n";
+	exit(-1);
 } elsif ($ARGV[0] eq "all") {
 	$run_all = 1;
 	open(SUM,">> $report");
@@ -76,14 +104,27 @@ if ($ARGV[0] eq "") {
 	print(SUM "\nRunning all tests:\n$linestr\n");
 	close SUM;
 } elsif ($ARGV[0] eq "vivado") {
-	$run_all = 0;
-	$vivado  = 1;
-	print "Debug: Running specific tests with Vivado: " . join(", ", @ARGV[1..$#ARGV]) . "\n";
-	@array = @ARGV;
-	splice(@array, 0, 1);
+	if (scalar(@ARGV) == 1) {
+		$run_all = 1;
+		open(SUM,">> $report");
+		print(SUM "\nRunning all tests:\n$linestr\n");
+		close SUM;
+	} else {
+		$run_all = 0;
+		$vivado  = 1;
+		print "Debug: Running specific tests with Vivado: " . join(", ", @ARGV[1..$#ARGV]) . "\n";
+		@array = @ARGV;
+		splice(@array, 0, 1);
+	}
 } else {
+	## What default simulators are supported??
 	@array = @ARGV;
-	print "Debug: Running specific tests with default simulator: " . join(", ", @array) . "\n";
+	# print "Debug: Running specific tests with default simulator: " . join(", ", @array) . "\n";
+	# print "ERROR: No default simulator specified\n";
+	##	Let's not generate an error.  We only support Vivado, so let's
+	##	make that the default simulator.
+	# print "Recommend: perl sim_run.pl vivado [all|test names]\n";
+	# exit(-1);
 }
 ## }}}
 
@@ -153,7 +194,6 @@ sub simline($) {
 		print "Debug: No test name found\n";
 		return();
 	} elsif ($vivado > 0) {	## Vivado test support
-		print "Debug: Running test with Vivado: $tstname\n";
 		## Create and run the test with Vivado
 		my $vivado_script = "vivado_sim.tcl";
 		open(VS, ">$vivado_script") or die "Cannot create Vivado script: $!";
@@ -204,6 +244,9 @@ sub simline($) {
 		print VS "update_compile_order -fileset sim_1\n";
 		print VS "set_property -name {xsim.elaborate.debug_level} -value {all} -objects [get_filesets sim_1]\n";
 		print VS "set_property -name {xsim.simulate.runtime} -value {all} -objects [get_filesets sim_1]\n";
+		# Set Verilog defines for proper test script selection
+		print VS "set_property verilog_define {REGRESSION=1} [get_filesets sources_1]\n";
+		print VS "set_property verilog_define {REGRESSION=1} [get_filesets sim_1]\n";
 		print VS "launch_simulation -simset sim_1 -mode behavioral\n";
 		print VS "exit\n";
 		close(VS);
@@ -218,17 +261,32 @@ sub simline($) {
 		my $elapsed = $end_time - $start_time;
 		print "Debug: Vivado execution completed in $elapsed seconds\n";
 		
-		# Cleanup temporary files and directories
-		print "Debug: Cleaning up temporary files and directories\n";
-		system("rm -f *.jou *.log testscript.v satalib.v vivado_sim.tcl");
-		system("rm -rf tmp_project");
-		
-		# Check for successful completion
+		# Check for successful completion BEFORE cleanup
 		my $logfile = "$tstname.log";
 		my $success = 0;
+		my $errors_present = 0;
+		my $assertion_failed = 0;
+		my $timing_failure = 0;
+
 		if (-e $logfile) {
 			open(LF, $logfile);
 			while(my $line = <LF>) {
+				if ($line =~ /ERROR/) {
+					$errors_present = 1;
+				}
+
+				if ($line =~ /assert.*fail/) {
+					$assertion_failed = 1;
+				}
+
+				if ($line =~ /timing violation/i) {
+					$timing_failure = 1;
+				}
+
+				if ($line =~ /fail/i) {
+					$test_failed = 1;
+				}
+
 				if ($line =~ /Simulation complete/ || $line =~ /Test pass/) {
 					$success = 1;
 					last;
@@ -236,23 +294,39 @@ sub simline($) {
 			}
 			close(LF);
 		}
-		
-		if ($success) {
-			push(@passed, $tstname);
-			print "TEST: $tstname -- PASSED\n";
-			open(SUM,">> $report");
-			print(SUM "TEST: $tstname -- PASSED\n");
-			close(SUM);
-		} else {
+
+		# Cleanup temporary files and directories (but keep test log files)
+		print "Debug: Cleaning up temporary files and directories\n";
+		system("rm -f testscript.v satalib.v vivado_sim.tcl");
+		system("rm -f *.jou");  # Remove journal files but keep test log files
+		system("rm -rf tmp_project");
+
+		$tstamp = timestamp();
+		$msg = sprintf("%s Vivado    -- %s", $tstamp, $tstname);
+
+		if ($assertion_failed or $errors_present) {
 			push(@failed, $tstname);
-			print "TEST: $tstname -- FAILED\n";
-			open(SUM,">> $report");
-			print(SUM "TEST: $tstname -- FAILED\n");
-			close(SUM);
+			$msg = sprintf("ERRORS    %s\n", $msg);
+		} elsif ($timing_failure) {
+			push(@failed, $tstname);
+			$msg = sprintf("TIMING-ER %s\n", $msg);
+		} elsif ($test_failed or $success == 0) {
+			push(@failed, $tstname);
+			$msg = sprintf("FAIL      %s\n", $msg);
+		} else {
+			push(@passed, $tstname);
+			$msg = sprintf("Pass      %s\n", $msg);
 		}
 		
+		open(SUM,">> $report");
+		print(SUM $msg);
+		close(SUM);
+		print $msg;
+
 		return();
 	} else {
+		print "ERROR: No simulator defined!\n";
+		exit(-1);
 		return();
 	}
 }
@@ -296,6 +370,8 @@ if ($run_all) {
 	my $test_count = 0;
 	while($line = <TL>) {
 		next if ($line =~ /^\s*#/);
+		$test_count++;
+		print "Debug: Processing test $test_count: $line";
 		simline($line);
 	}
 	close(TL);
@@ -318,22 +394,22 @@ if ($run_all) {
 }
 ## }}}
 
-if (@failed) {
-	print "\nFailed testcases: " . scalar(@failed) . " tests\n$linestr\n";
-	foreach $akey (@failed) {
-		print " $akey\n";
-	}
-}
-
 if (@passed) {
-	print "\nPassing testcases: " . scalar(@passed) . " tests\n$linestr\n";
+	print "\n" . scalar(@passed) . " Passing testcases:\n$linestr\n";
 	foreach $akey (@passed) {
 		print " $akey\n";
 	}
 }
 
-print "Debug: Script completed.\n";
+if (@failed) {
+	print "\n" . scalar(@failed) . " Failed testcases:\n$linestr\n";
+	foreach $akey (@failed) {
+		print " $akey\n";
+	}
+}
 
 if (@failed) {
-	die "Not all tests passed\n";
+	die "\nNot all tests passed\n";
+} else {
+	print "$linestr\nAll tests passed\n";
 }
