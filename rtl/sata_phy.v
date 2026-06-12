@@ -60,6 +60,7 @@ module	sata_phy #(
 		// External reference clock
 		input	wire		i_ref_sata_clk,
 		//
+		input	wire		i_user_reset,
 		output	wire		o_ready, o_init_err,
 		// Wishbone DRP Control
 		// {{{
@@ -119,6 +120,7 @@ module	sata_phy #(
 	wire		cpll_locked, ign_rx_comma, pll_locked, cpll_reset;
 	wire	[63:0]	raw_rx_data;
 	wire	[7:0]	rx_char_is_k, rx_invalid_code, rx_disparity_err;
+	wire		qpll_power_down;
 	reg		qpll_reset;
 	reg	[6:0]	qpll_reset_count;
 	wire	[31:0]	tx_debug, rx_debug;
@@ -173,7 +175,7 @@ module	sata_phy #(
 	initial	qpll_reset = 1'b1;
 	initial	qpll_reset_count = -1;
 	always @(posedge i_wb_clk)
-	if (i_reset)
+	if (i_reset || i_user_reset)
 	begin
 		qpll_reset <= 1'b1;
 		qpll_reset_count <= -1;
@@ -182,6 +184,8 @@ module	sata_phy #(
 		if (qpll_reset > 0)
 			qpll_reset_count <= qpll_reset_count - 1;
 	end
+
+	assign	qpll_power_down = qpll_reset;
 	// }}}
 
 	sata_phyinit
@@ -267,7 +271,7 @@ module	sata_phy #(
 	tx_init (
 		// {{{
 		.i_clk(i_wb_clk),
-		.i_reset(i_reset),
+		.i_reset(i_reset || i_user_reset),
 		.i_power_down(1'b0), // power_down),
 		.o_pll_reset(tx_pll_reset),
 		.i_pll_locked(pll_locked || !USE_QPLL),
@@ -428,7 +432,7 @@ module	sata_phy #(
 	generate if (REFCLK_FREQUENCY == 150)
 	begin : GEN_QPLL
 		// {{{
-		wire	qpll_lock, pll_reset, qpll_refck_lost;
+		wire	qpll_lock, qpll_refck_lost;
 
 		GTXE2_COMMON #(
 			// {{{
@@ -491,8 +495,9 @@ module	sata_phy #(
 			.QPLLLOCK(qpll_lock),
 			.QPLLLOCKDETCLK(i_wb_clk),
 			.QPLLLOCKEN(1'b1),
-			.QPLLPD(1'b0),	// Powers down the QPLL for pwr savings
-			.QPLLRESET(pll_reset),
+			// Powers down the QPLL for pwr savings
+			.QPLLPD(qpll_power_down),
+			.QPLLRESET(qpll_reset),
 			//
 			.QPLLOUTCLK(qpll_clk),
 			.QPLLOUTREFCLK(qpll_refck),
