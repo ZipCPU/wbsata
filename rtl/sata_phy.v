@@ -70,9 +70,9 @@ module	sata_phy #(
 		input	wire	[31:0]	i_wb_data,
 		input	wire	[3:0]	i_wb_sel,
 		output	wire		o_wb_stall,
-		output	reg		o_wb_ack,
-		output	reg	[31:0]	o_wb_data,
-		output	reg		o_wb_err,
+		output	wire		o_wb_ack,
+		output	wire	[31:0]	o_wb_data,
+		output	wire		o_wb_err,
 		// }}}
 		// Transmitter control
 		// {{{
@@ -125,7 +125,7 @@ module	sata_phy #(
 	wire	[7:0]	rx_char_is_k, rx_invalid_code, rx_disparity_err;
 	wire		qpll_power_down;
 	reg		qpll_reset;
-	reg	[6:0]	qpll_reset_count;
+	reg	[7:0]	qpll_reset_count;
 	wire	[31:0]	tx_debug, rx_debug;
 	wire	[6:0]	pll_debug;
 
@@ -188,7 +188,7 @@ module	sata_phy #(
 			qpll_reset_count <= qpll_reset_count - 1;
 	end
 
-	assign	qpll_power_down = qpll_reset;
+	assign	qpll_power_down = !qpll_reset_count[7];
 	// }}}
 
 	sata_phyinit
@@ -291,12 +291,10 @@ module	sata_phy #(
 	assign	o_init_err = rx_watchdog_err || tx_watchdog_err;
 	assign	o_ready = rx_ready && o_tx_ready;
 
-	assign	o_debug = rx_debug
-		| ({ 25'h0, pll_debug } << 26)
-		// | ({ 29'h0, tx_watchdog_err, tx_user_ready, o_tx_ready } << 23)
-		| ({ 29'h0, i_rx_cdrhold, tx_user_ready, o_tx_ready } << 23)
-		// .RXCDRHOLD(0 && (!rx_gtx_reset && !rx_cdr_gtx_reset) && i_rx_cdrhold),	// i_rx_cdrhold
-		| ({ 28'h0, tx_debug[3:0] } << 27);
+	assign	o_debug = { rx_debug[31], tx_debug[3:0],
+				pll_debug[1] || pll_debug[0],
+				i_rx_cdrhold, tx_user_ready, o_tx_ready,
+				rx_debug[22:0] };
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -320,6 +318,7 @@ module	sata_phy #(
 		sata_drp #(
 			.LGWATCHDOG(6)
 		) u_drp (
+			// {{{
 			.i_clk(i_wb_clk), .i_reset(i_reset), .i_soft_reset(i_user_reset),
 			.i_wb_cyc(i_wb_cyc), .i_wb_stb(i_wb_stb),
 			.i_wb_we(i_wb_we), .i_wb_addr(i_wb_addr),
@@ -430,10 +429,10 @@ module	sata_phy #(
 				?(SATA_GEN <= 1 ? 2 : 1)
 				:(SATA_GEN <= 1 ? 4 : (SATA_GEN == 2) ? 2 : 1));
 
-	generate if (REFCLK_FREQUENCY == 150)
+	generate if (USE_QPLL)
 	begin : GEN_QPLL
 		// {{{
-		wire	qpll_lock, qpll_refck_lost;
+		wire	qpll_lock, qpll_fbck_lost, qpll_refck_lost;
 
 		GTXE2_COMMON #(
 			// {{{
@@ -499,10 +498,12 @@ module	sata_phy #(
 			.QPLLLOCKEN(1'b1),
 			// Powers down the QPLL for pwr savings
 			.QPLLPD(qpll_power_down),
-			.QPLLRESET(qpll_reset),
+			.QPLLRESET(qpll_reset || i_user_reset),
 			//
 			.QPLLOUTCLK(qpll_clk),
 			.QPLLOUTREFCLK(qpll_refck),
+			.QPLLFBCLKLOST(qpll_fbck_lost),
+			.QPLLREFCLKLOST(qpll_refck_lost),	// Output, indicates reference clk lost
 			// DRP
 			// {{{
 			.DRPCLK(i_wb_clk),
@@ -523,7 +524,6 @@ module	sata_phy #(
 			.GTNORTHREFCLK1(1'b0),
 			.GTSOUTHREFCLK0(1'b0),
 			.GTSOUTHREFCLK1(1'b0),
-			.QPLLREFCLKLOST(qpll_refck_lost),	// Output, indicates reference clk lost
 			// Reserved
 			.QPLLRSVD1(16'h0),
 			.QPLLRSVD2(5'h1f),
@@ -542,7 +542,7 @@ module	sata_phy #(
 
 		assign	pll_locked = qpll_lock;
 		assign	cpll_reset = 1'b1;
-		assign	pll_debug = { 6'h0, qpll_refck_lost };
+		assign	pll_debug = { 6'h0, qpll_fbck_lost, qpll_refck_lost };
 		// }}}
 	end else begin : NO_QPLL
 
@@ -999,7 +999,7 @@ module	sata_phy #(
 		(* invertible_pin = "IS_DRPCLK_INVERTED" *)
 		.DRPCLK(i_drp_clk),
 		.DRPRDY(gtx_drp_ready),
-		.DRPADDR(i_drp_addr),
+		.DRPADDR({ 1'b0, i_drp_addr }),
 		.DRPDI(i_drp_data[15:0]),
 		.DRPEN(gtx_drp_enable),
 		.DRPWE(i_drp_we),
@@ -1255,10 +1255,10 @@ module	sata_phy #(
 		// .GTGREFCLK(),
 		.GTNORTHREFCLK0(1'b0),
 		.GTNORTHREFCLK1(1'b0),
-		.GTREFCLK0(USE_QPLL ? 1'b0 : i_ref_clk200),
+		.GTREFCLK0(USE_QPLL ? 1'b0 : i_ref_sata_clk),
 		// We'll only select GTREFCLK0, but refclk1 still needs to be
 		// valid for synthesis purposes
-		.GTREFCLK1(USE_QPLL ? 1'b0 : i_ref_clk200),
+		.GTREFCLK1(USE_QPLL ? 1'b0 : i_ref_sata_clk),
 		.GTSOUTHREFCLK0(1'b0),
 		.GTSOUTHREFCLK1(1'b0),
 		.QPLLCLK(qpll_clk),
