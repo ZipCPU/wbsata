@@ -53,7 +53,12 @@ module	sata_phy #(
 		parameter [0:0]	OPT_RXBUFFER = 1'b1,
 		parameter [0:0]	OPT_TXBUFFER = 1'b1,
 		parameter [0:0]	OPT_AUTO_ALIGN = 1'b1,	// Detect & ALIGN_p
-		parameter [1:0]	SATA_GEN = 1
+		parameter [1:0]	SATA_GEN = 1,
+		parameter DEF_CLKDIV = (REFCLK_FREQUENCY == 150)
+			? ((SATA_GEN <= 1) ? 8 : ((SATA_GEN == 2) ? 4 : 2))
+			: ((REFCLK_FREQUENCY == 100)
+				?(SATA_GEN <= 1 ? 2 : 1)
+				:(SATA_GEN <= 1 ? 4 : (SATA_GEN == 2) ? 2 : 1))
 		// }}}
 	) (
 		// {{{
@@ -125,7 +130,7 @@ module	sata_phy #(
 	wire	[7:0]	rx_char_is_k, rx_invalid_code, rx_disparity_err;
 	wire		qpll_power_down;
 	reg		qpll_reset;
-	reg	[7:0]	qpll_reset_count;
+	reg	[4:0]	qpll_reset_count;
 	wire	[31:0]	tx_debug, rx_debug;
 	wire	[6:0]	pll_debug;
 
@@ -188,7 +193,7 @@ module	sata_phy #(
 			qpll_reset_count <= qpll_reset_count - 1;
 	end
 
-	assign	qpll_power_down = !qpll_reset_count[7];
+	assign	qpll_power_down = 1'b0;
 	// }}}
 
 	sata_phyinit
@@ -423,11 +428,6 @@ module	sata_phy #(
 	// }}}
 	// REFCLK_FREQUENCY is one of 150 or 200 (MHz)
 	// .RXOUT_DIV((SATA_GEN <= 1) ? 8 : ((SATA_GEN == 2) ? 4 : 2)),
-	parameter FIXED_CLKDIV = (REFCLK_FREQUENCY == 150)
-			? ((SATA_GEN <= 1) ? 8 : ((SATA_GEN == 2) ? 4 : 2))
-			: ((REFCLK_FREQUENCY == 100)
-				?(SATA_GEN <= 1 ? 2 : 1)
-				:(SATA_GEN <= 1 ? 4 : (SATA_GEN == 2) ? 2 : 1));
 
 	generate if (USE_QPLL)
 	begin : GEN_QPLL
@@ -549,7 +549,7 @@ module	sata_phy #(
 		assign	qpll_clk   = 1'b0;
 		assign	qpll_refck = 1'b0;
 		assign	pll_locked = cpll_locked;
-		assign	cpll_reset = i_reset;
+		assign	cpll_reset = i_reset || i_user_reset;
 		assign	pll_debug = 7'h0;
 	end endgenerate
 
@@ -658,7 +658,7 @@ module	sata_phy #(
 		// fLineRate = fPLLCLKout * 2 / TXOUT_DIV
 		//	Given fPLLClkout = 6GHz, to be in QPLL range, thus...
 		//	= 6, 3, or 1.5GHz depending on SATA_GEN below
-		.RXOUT_DIV(FIXED_CLKDIV),
+		.RXOUT_DIV(DEF_CLKDIV),
 		// }}}
 		// RX Margin Analysis (Eye Scan)
 		// {{{
@@ -832,7 +832,7 @@ module	sata_phy #(
 		// {{{
 		// fLineRate = fPLLCLKout * 2 / TXOUT_DIV
 		//	= 6, 3, or 1.5GHz depending on SATA_GEN below
-		.TXOUT_DIV(FIXED_CLKDIV),
+		.TXOUT_DIV(DEF_CLKDIV),
 		// }}}
 		// TX Configurable Driver
 		// {{{
@@ -999,7 +999,7 @@ module	sata_phy #(
 		(* invertible_pin = "IS_DRPCLK_INVERTED" *)
 		.DRPCLK(i_drp_clk),
 		.DRPRDY(gtx_drp_ready),
-		.DRPADDR({ 1'b0, i_drp_addr }),
+		.DRPADDR(i_drp_addr[8:0]),
 		.DRPDI(i_drp_data[15:0]),
 		.DRPEN(gtx_drp_enable),
 		.DRPWE(i_drp_we),
