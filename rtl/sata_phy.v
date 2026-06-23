@@ -53,12 +53,7 @@ module	sata_phy #(
 		parameter [0:0]	OPT_RXBUFFER = 1'b1,
 		parameter [0:0]	OPT_TXBUFFER = 1'b1,
 		parameter [0:0]	OPT_AUTO_ALIGN = 1'b1,	// Detect & ALIGN_p
-		parameter [1:0]	SATA_GEN = 1,
-		parameter DEF_CLKDIV = (REFCLK_FREQUENCY == 150)
-			? ((SATA_GEN <= 1) ? 8 : ((SATA_GEN == 2) ? 4 : 2))
-			: ((REFCLK_FREQUENCY == 100)
-				?(SATA_GEN <= 1 ? 2 : 1)
-				:(SATA_GEN <= 1 ? 4 : (SATA_GEN == 2) ? 2 : 1))
+		parameter [1:0]	SATA_GEN = 1
 		// }}}
 	) (
 		// {{{
@@ -121,7 +116,15 @@ module	sata_phy #(
 
 	// Declarations
 	// {{{
-	localparam [0:0]	USE_QPLL = (REFCLK_FREQUENCY == 150);
+	// localparam [0:0]	USE_QPLL = (REFCLK_FREQUENCY == 150);
+	localparam [0:0]	USE_QPLL = 1'b0;
+	localparam	DEF_CLKDIV = (USE_QPLL)
+			? ((SATA_GEN <= 1) ? 8 : ((SATA_GEN == 2) ? 4 : 2))
+			: (REFCLK_FREQUENCY == 150) ? ((SATA_GEN <= 1) ? 4 : 2)
+			: (REFCLK_FREQUENCY == 100)
+				// Ref-clocks of 100/200MHz ... not supported
+				?(SATA_GEN <= 1 ? 2 : 1)
+				:(SATA_GEN <= 1 ? 4 : (SATA_GEN == 2) ? 2 : 1);
 	wire		i_realign, syncd, resyncd, rx_polarity,
 			tx_polarity, raw_tx_clk;
 	wire		power_down, tx_pll_lock;
@@ -427,9 +430,8 @@ module	sata_phy #(
 	//			=> 3000 * 2 / { 1 2 4 } = (6000, 3000, 1500)
 	// }}}
 	// REFCLK_FREQUENCY is one of 150 or 200 (MHz)
-	// .RXOUT_DIV((SATA_GEN <= 1) ? 8 : ((SATA_GEN == 2) ? 4 : 2)),
 
-	generate if (USE_QPLL)
+	generate if (USE_QPLL)	// REFERENCE CLOCK FREQUENCY *MUST* == 150MHz
 	begin : GEN_QPLL
 		// {{{
 		wire	qpll_lock, qpll_fbck_lost, qpll_refck_lost;
@@ -448,11 +450,13 @@ module	sata_phy #(
 			//			= fPllClkin * N / M / D
 			// QPLL
 			//	fPllClkin = 150 MHz
-			//			QPLL Upper band (9.8-12.5 GHz)
+			//			QPLL Lower band (5.93-8.0 GHz)
 			//		M = 1, N = 80, D = 8
 			//		fPllClkout = 6,000 GHz
 			//		fLineRate  = 1,500 GHz
 			//
+			//	fPllClkin = 200 MHz
+			//		QPLL won't work
 			//	fPllClkin = 100 MHz
 			//		QPLL won't work
 			.QPLL_REFCLK_DIV(1),	// = M, can be 1,2,3, or 4
@@ -519,7 +523,7 @@ module	sata_phy #(
 			.QPLLDMONITOR(),
 			//
 			.REFCLKOUTMONITOR(),
-			// .GTGREFCLK(),	// Internal testing pport only
+			// .GTGREFCLK(),	// Internal testing port only
 			.GTNORTHREFCLK0(1'b0),
 			.GTNORTHREFCLK1(1'b0),
 			.GTSOUTHREFCLK0(1'b0),
@@ -569,9 +573,16 @@ module	sata_phy #(
 		// {{{
 		.CPLL_CFG(24'hBC07DC),
 		// fPLLCLKout = fPLLCLKin * (FBDIV_45 * FBDIV) / (REFCLK_DIV)
-		//	= fPLLCLKin * (15 / 1)
-		//	= 200MHz * 15 = 3GHz
-		.CPLL_FBDIV(3),
+		// CPLL w/ 200MHz reference
+		//	= 200MHz * (3 * 5) / 1 = 3 GHz
+		// CPLL w/ 150MHz reference
+		//	= 150MHz * (4 * 5) / 1 = 3 GHz
+		// CPLL w/ 100MHz reference --- OUT OF BOUNDS (Must be > 1.6GHz)
+		//	= 100MHz * (3 * 5) / 1 = 1.5 GHz < 1.6GHz Out-of-Bounds!
+		// Settings: CPLL_FBDIV_45=N1=5,CPLL_FBDIV=N2=4,
+		//	?XOUT_DIV=D=2 (GEN_2) or 4 (GEN_1),
+		//	CPLL_REFCLK_DIV=M=1
+		.CPLL_FBDIV((REFCLK_FREQUENCY==150) ? 4 : 3),
 		.CPLL_FBDIV_45(5),
 		.CPLL_INIT_CFG(24'h00001E),
 		.CPLL_LOCK_CFG(16'h01E8),
@@ -607,8 +618,8 @@ module	sata_phy #(
 		// RX OOB Signaling attributes
 		// {{{
 		.RXOOB_CFG(7'b0000110),
-		.SATA_BURST_VAL(3'b100),
-		.SATA_EIDLE_VAL(3'b100),
+		.SATA_BURST_VAL(USE_QPLL ? 3'b100 : 3'h7),
+		.SATA_EIDLE_VAL(USE_QPLL ? 3'b100 : 3'h7),
 		.SAS_MAX_COM(64),
 		.SAS_MIN_COM(36),
 		.SATA_MAX_BURST(8),
@@ -623,7 +634,7 @@ module	sata_phy #(
 		.RX_OS_CFG(13'h0080),
 		.RXLPM_LF_CFG(14'h00f0),
 		.RXLPM_HF_CFG(14'h00f0),
-		.RX_DFE_LPM_CFG(16'h0954),
+		.RX_DFE_LPM_CFG(USE_QPLL ? 16'h0954 : 16'h0904),
 		.RX_DFE_GAIN_CFG(23'h020fea),
 		.RX_DFE_H2_CFG(12'h0),
 		.RX_DFE_H3_CFG(12'h040),	// Default value
@@ -741,8 +752,8 @@ module	sata_phy #(
 		.CBCC_DATA_SOURCE_SEL("DECODED"),
 		.CLK_CORRECT_USE("FALSE"),	// Disable clock correction
 		.CLK_COR_KEEP_IDLE("FALSE"),	//
-		.CLK_COR_MAX_LAT(19),
-		.CLK_COR_MIN_LAT(15),
+		.CLK_COR_MAX_LAT(USE_QPLL ? 19 : 9),
+		.CLK_COR_MIN_LAT(USE_QPLL ? 15 : 7),
 		.CLK_COR_PRECEDENCE("TRUE"),
 		.CLK_COR_REPEAT_WAIT(0),
 		.CLK_COR_SEQ_LEN(1),
@@ -863,16 +874,14 @@ module	sata_phy #(
 		// }}}
 		// TX Out-of-Band Support (REQUIRED)
 		// {{{
-		.SATA_CPLL_CFG((SATA_GEN == 1) ? "VCO_750MHZ"
-				: (SATA_GEN == 2) ? "VCO_1500MHz"
-				: "VCO_3000MHZ"),	// Full rate mode
+		.SATA_CPLL_CFG("VCO_3000MHZ"),	// Full rate mode
 		.SATA_BURST_SEQ_LEN(4'b0101),	// 16 bursts in COM sequence
 		// }}}
 		// }}}
 		// PCIe Clocking
 		// {{{
-		.RX_CLK25_DIV(8),	// 200MHz / 8 = 25MHz as required
-		.TX_CLK25_DIV(8),
+		.RX_CLK25_DIV(USE_QPLL ? 8 : 6),// 200MHz/8 = 25MHz as required
+		.TX_CLK25_DIV(USE_QPLL ? 8 : 6),
 		// }}}
 		.ES_PMA_CFG(10'b0000000000),
 		.IS_CPLLLOCKDETCLK_INVERTED(1'b0),
@@ -1253,14 +1262,19 @@ module	sata_phy #(
 		.TSTOUT(),
 		// (* invertible_pin = "IS_GTGREFCLK_INVERTED" *)
 		// .GTGREFCLK(),
+		//
+		// Reference clocks
+		// {{{
+		// When using the CPLL, all reference clocks are set to .. zero?
 		.GTNORTHREFCLK0(1'b0),
 		.GTNORTHREFCLK1(1'b0),
 		.GTREFCLK0(USE_QPLL ? 1'b0 : i_ref_sata_clk),
 		// We'll only select GTREFCLK0, but refclk1 still needs to be
 		// valid for synthesis purposes
-		.GTREFCLK1(USE_QPLL ? 1'b0 : i_ref_sata_clk),
+		.GTREFCLK1(1'b0),
 		.GTSOUTHREFCLK0(1'b0),
 		.GTSOUTHREFCLK1(1'b0),
+		// }}}
 		.QPLLCLK(qpll_clk),
 		.QPLLREFCLK(qpll_refck),
 		.TXPOLARITY(tx_polarity),	// 0 = Normal polarity
