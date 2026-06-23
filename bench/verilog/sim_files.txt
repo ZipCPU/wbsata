@@ -6,6 +6,7 @@ satatb_top.v
 ../../rtl/satadma_rxgears.v
 ../../rtl/satadma_s2mm.v
 ../../rtl/satadma_txgears.v
+../../rtl/sata_drp.v
 ../../rtl/sata_link.v
 ../../rtl/satalnk_align.v
 ../../rtl/satalnk_fsm.v

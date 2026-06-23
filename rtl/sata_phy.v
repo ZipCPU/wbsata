@@ -618,8 +618,8 @@ module	sata_phy #(
 		// RX OOB Signaling attributes
 		// {{{
 		.RXOOB_CFG(7'b0000110),
-		.SATA_BURST_VAL(USE_QPLL ? 3'b100 : 3'h7),
-		.SATA_EIDLE_VAL(USE_QPLL ? 3'b100 : 3'h7),
+		.SATA_BURST_VAL(3'b100),
+		.SATA_EIDLE_VAL(3'b100),
 		.SAS_MAX_COM(64),
 		.SAS_MIN_COM(36),
 		.SATA_MAX_BURST(8),
@@ -880,8 +880,8 @@ module	sata_phy #(
 		// }}}
 		// PCIe Clocking
 		// {{{
-		.RX_CLK25_DIV(USE_QPLL ? 8 : 6),// 200MHz/8 = 25MHz as required
-		.TX_CLK25_DIV(USE_QPLL ? 8 : 6),
+		.RX_CLK25_DIV(8),
+		.TX_CLK25_DIV(8),
 		// }}}
 		.ES_PMA_CFG(10'b0000000000),
 		.IS_CPLLLOCKDETCLK_INVERTED(1'b0),
