@@ -61,6 +61,8 @@ module	satatrn_fsm #(
 		// {{{
 		input	wire			i_clk, i_reset,
 		output	reg			o_phy_reset,
+		input	wire	[3:0]		i_phy_status,
+		input	wire	[3:0]		i_oob_status,
 		// WB Control interface
 		// {{{
 		input	wire			i_wb_cyc, i_wb_stb, i_wb_we,
@@ -760,8 +762,24 @@ module	satatrn_fsm #(
 		end
 	end
 
-	assign	w_phy_data = { 24'h0,
-			fsm_state,
+	assign	w_phy_data = { 12'h0,
+			// 4'h0,
+			// COMWAKE Received
+			// COMWAKE Sent
+			// COMINIT Received
+			// COMINIT Sent
+			i_oob_status,
+				//
+			4'b0,
+			// 3b SPEED: 0, 1, or 2 (R/W)
+				//
+			// 4'b0,
+			// GTX Ready
+			// RX Ready
+			// TX Ready
+			// Q/CPLL Locked
+			i_phy_status,
+			fsm_state,		// 4b
 			tran_failed, link_dropped, reset_hold, o_phy_reset };
 
 	// }}}

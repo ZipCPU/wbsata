@@ -45,7 +45,9 @@ module	sata_reset #(
 	) (
 		// {{{
 		input	wire	i_tx_clk,
+		// Verilator lint_off UNUSED
 		input	wire	i_rx_clk,
+		// Verilator lint_on  UNUSED
 		// Verilator lint_off SYNCASYNCNET
 		input	wire	i_reset_n,	// In TX clock domain
 		// Verilator lint_on  SYNCASYNCNET
@@ -72,6 +74,7 @@ module	sata_reset #(
 		input	wire		i_rx_valid,
 		input	wire	[32:0]	i_rx_data,
 		//
+		output	wire	[3:0]	o_oob_status,
 		output	reg		o_link_up,
 		//
 		// o_debug is set to the tx_clk domain
@@ -103,22 +106,21 @@ module	sata_reset #(
 	localparam	MIN_ALIGNMENT = $rtoi(116.3e-9 * CLOCK_FREQUENCY_HZ)+4;
 	localparam	LGALIGN = $clog2(MIN_ALIGNMENT+1);
 
-	reg		rx_reset;
-	reg	[1:0]	rx_pipe_reset;
+	reg		tx_reset;
+	reg	[1:0]	tx_pipe_reset;
 
 	wire		rx_elecidle, rx_cominit, rx_comwake;
-	reg	[1:0]	pipe_rx_elecidle, pipe_rx_cominit, pipe_rx_comwake,
-			pipe_phy_ready, pipe_rx_align;
-	reg		ck_rx_elecidle, ck_rx_cominit, ck_rx_comwake,
-			ck_phy_ready, ck_rx_align;
+	reg		last_rx_cominit, last_rx_comwake;
+	wire		ck_rx_elecidle, ck_rx_align;
+	reg		ck_rx_cominit, ck_rx_comwake,
+			ck_phy_ready;
 
-	reg	[3:0]	fsm_state;
+	(* ASYNC_REG="TRUE" *)
+	reg		pipe_phy_ready;
 
+	reg	[3:0]	fsm_state, oob_status;
 	wire		w_rx_align, rx_align;
 	// FIXME--these should be used for ... something
-	// Verilator lint_off UNUSED
-	wire		w_rx_sync, rx_sync;
-	// Verilator lint_on  UNUSED
 	reg				retry_timeout;
 	reg	[LGWATCHDOG-1:0]	watchdog_counter;
 
@@ -132,86 +134,82 @@ module	sata_reset #(
 	// Move the RX COM detect signals to the TX clock domain
 	// {{{
 
-	always @(posedge i_rx_clk or negedge i_reset_n)
+	always @(posedge i_tx_clk or negedge i_reset_n)
 	if (!i_reset_n)
-		{ rx_reset, rx_pipe_reset } <= -1;
+		{ tx_reset, tx_pipe_reset } <= -1;
 	else
-		{ rx_reset, rx_pipe_reset } <= { rx_pipe_reset, 1'b0 };
+		{ tx_reset, tx_pipe_reset } <= { tx_pipe_reset, 1'b0 };
 
 	// To extend ... on pulse detection, set counter = 5
 	//	count counter down to zero, then release pulse when source is
 	//	clear.
-	sata_pextend #(
-		.COUNTS(3)
-	) u_extend_elecidle (
-		.i_clk(i_rx_clk), .i_reset(rx_reset),
+	sata_pextend
+	u_extend_elecidle (
+		.i_clk(i_tx_clk), .i_reset(tx_reset),
 		.i_sig(i_rx_elecidle),
 		.o_sig(rx_elecidle)
 	);
 
-	sata_pextend #(
-		.COUNTS(3)
-	) u_extend_cominit (
-		.i_clk(i_rx_clk), .i_reset(rx_reset),
+	sata_pextend
+	u_extend_cominit (
+		.i_clk(i_tx_clk), .i_reset(tx_reset),
 		.i_sig(i_rx_cominit),
 		.o_sig(rx_cominit)
 	);
 
-	sata_pextend #(
-		.COUNTS(3)
-	) u_extend_comwake (
-		.i_clk(i_rx_clk), .i_reset(rx_reset),
+	sata_pextend
+	u_extend_comwake (
+		.i_clk(i_tx_clk), .i_reset(tx_reset),
 		.i_sig(i_rx_comwake),
 		.o_sig(rx_comwake)
 	);
 
 	assign	w_rx_align = i_rx_valid && i_rx_data[31:0] == P_ALIGN[31:0];
 
-	sata_pextend #(
-		.COUNTS(3)
-	) u_extend_rxalign (
-		.i_clk(i_rx_clk), .i_reset(rx_reset),
+	sata_pextend
+	u_extend_rxalign (
+		.i_clk(i_tx_clk), .i_reset(tx_reset),
 		.i_sig(w_rx_align),
 		.o_sig(rx_align)
 	);
 
+	/*
+	// {{{
+	// Verilator lint_off UNUSED
+	wire		w_rx_sync, rx_sync;
+	// Verilator lint_on  UNUSED
+
 	assign	w_rx_sync = i_rx_valid && i_rx_data == P_SYNC;
 
-	sata_pextend #(
-		.COUNTS(3)
-	) u_extend_rxsync (
-		.i_clk(i_rx_clk), .i_reset(rx_reset),
+	sata_pextend
+	u_extend_rxsync (
+		.i_clk(i_tx_clk), .i_reset(tx_reset),
 		.i_sig(w_rx_sync),
 		.o_sig(rx_sync)
 	);
+	// }}}
+	*/
+
+	assign	ck_rx_elecidle = rx_elecidle;
 
 	always @(posedge i_tx_clk or negedge i_reset_n)
 	if (!i_reset_n)
 	begin
-		{ ck_rx_elecidle, pipe_rx_elecidle } <= 0;
-		{ ck_rx_cominit, pipe_rx_cominit } <= 0;
-		{ ck_rx_comwake, pipe_rx_comwake } <= 0;
+		{ ck_rx_cominit, last_rx_cominit } <= 0;
+		{ ck_rx_comwake, last_rx_comwake } <= 0;
 		{ ck_phy_ready,  pipe_phy_ready } <= 0;
 	end else begin
-		{ ck_rx_elecidle, pipe_rx_elecidle }
-					<= { pipe_rx_elecidle,rx_elecidle };
-		{ ck_rx_cominit, pipe_rx_cominit }
-					<= { pipe_rx_cominit, rx_cominit };
-		{ ck_rx_comwake, pipe_rx_comwake }
-					<= { pipe_rx_comwake, rx_comwake };
+		last_rx_cominit <= rx_cominit;
+		ck_rx_cominit   <= rx_cominit && !last_rx_cominit;
+
+		last_rx_comwake <= rx_comwake;
+		ck_rx_comwake   <= rx_comwake && !last_rx_comwake;
 
 		{ ck_phy_ready, pipe_phy_ready }
 					<= { pipe_phy_ready, i_phy_ready };
 	end
 
-	always @(posedge i_tx_clk or negedge i_reset_n)
-	if (!i_reset_n)
-	begin
-		{ ck_rx_align, pipe_rx_align } <= 0;
-	end else begin
-		{ ck_rx_align, pipe_rx_align }
-					<= { pipe_rx_align, rx_align };
-	end
+	assign	ck_rx_align = rx_align;
 	// }}}
 
 	// COMINIT/COMRESET/COMWAKE signals last between 103.5 and 109.9ns
@@ -224,7 +222,8 @@ module	sata_reset #(
 	initial	o_link_up     = 1'b0;
 
 	always @(posedge i_tx_clk)
-	if (!i_reset_n) begin
+	if (!i_reset_n)
+	begin
 		fsm_state <= HR_RESET;
 
 		o_tx_cominit   <= 1'b0;
@@ -250,7 +249,8 @@ module	sata_reset #(
 			o_rx_cdrhold  <= 1'b1;
 			// Wait for the PHY to come out of any reset before
 			// continuing
-			if (ck_phy_ready) begin
+			if (ck_phy_ready)
+			begin
 				fsm_state <= HR_ISSUE_COMINIT;
 				o_tx_cominit  <= 1'b1;
 				// o_tx_elecidle <= 1'b0;
@@ -341,9 +341,8 @@ module	sata_reset #(
 			// before moving on.
 			o_rx_cdrhold  <= 1'b0;
 			{ o_phy_primitive, o_phy_data } <= D10_2;
-			if (!ck_rx_elecidle) begin
+			if (!ck_rx_elecidle)
 				o_tx_elecidle <= 1'b0;
-			end
 			if (ck_rx_align && !ck_rx_elecidle && check_alignment)
 				fsm_state <= HR_READY;
 			if (retry_timeout)	// 870us allowed
@@ -387,6 +386,30 @@ module	sata_reset #(
 	end
 
 	assign	o_tx_ready = o_link_up;
+
+
+	// oob_status[4] = RX READY = LINK-UP
+	// oob_status[3] = RX COMWAKE RECEIVED
+	// oob_status[2] = TX COMWAKE SENT
+	// oob_status[1] = RX COMINIT RECEIVED
+	// oob_status[0] = TX COMRESET SENT
+	always @(*)
+	case(fsm_state)
+	HR_RESET:		oob_status = 4'h0;
+	HR_ISSUE_COMINIT:	oob_status = 4'h0;
+	HR_AWAIT_RXCOMINIT:	oob_status = 4'h1;
+	HR_AWAIT_ENDOFINIT:	oob_status = 4'h3;
+	HR_CALIBRATE:		oob_status = 4'h3;
+	HR_COMWAKE:		oob_status = 4'h3;
+	HR_AWAIT_RXCOMWAKE:	oob_status = 4'h7;
+	HR_AWAIT_RXCLRWAKE:	oob_status = 4'hf;
+	HR_AWAIT_ALIGN:		oob_status = 4'hf;
+	HR_READY:		oob_status = 4'hf;
+	HR_AWAIT_RXCLRINIT:	oob_status = 4'h4;
+	default:		oob_status = 4'h0;
+	endcase
+
+	assign	o_oob_status = oob_status;
 
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -496,7 +519,7 @@ module	sata_reset #(
 	// {{{
 	// Verilator lint_off UNUSED
 	wire	unused;
-	assign	unused = &{ 1'b0 };
+	assign	unused = &{ 1'b0, i_rx_data[32] };
 	// Verilator lint_on  UNUSED
 	// }}}
 endmodule

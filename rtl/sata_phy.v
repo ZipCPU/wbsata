@@ -108,6 +108,7 @@ module	sata_phy #(
 		output	wire		o_tx_p, o_tx_n,
 		input	wire		i_rx_p, i_rx_n,
 		// }}}
+		output	wire	[3:0]	o_phy_status,
 		output	wire		o_refclk,
 		output	wire	[31:0]	o_drpdebug,
 		output	wire	[31:0]	o_debug
@@ -1230,7 +1231,7 @@ module	sata_phy #(
 		// {{{
 		.TXDEEMPH(1'b0),
 		.TXDIFFCTRL(4'b1000),	// Voltage swing control 0.807 Vppd
-		.TXELECIDLE(i_tx_elecidle),	// Creates an electrical idle
+		.TXELECIDLE(power_down || i_tx_elecidle),// Gen electrical idle
 		.TXINHIBIT(1'b0),	// Always transmit
 		.TXMAINCURSOR(7'h0),	//
 		.TXMARGIN(3'h0),
@@ -1379,4 +1380,10 @@ module	sata_phy #(
 		assign	tx_pll_lock = pll_locked;
 	end endgenerate
 
+	assign	o_phy_status = {
+				o_ready,	// GTX Ready
+				rx_ready,	// RX Ready
+				o_tx_ready,	// TX Ready
+				pll_locked	// QPLL/CPLL Locked
+			};
 endmodule

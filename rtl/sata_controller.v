@@ -101,6 +101,7 @@ module	sata_controller #(
 		//
 		output	wire		o_phy_reset,
 		input	wire		i_phy_ready,
+		input	wire	[3:0]	i_phy_status,
 		output	wire		o_lnk_ready,
 		// }}}
 		output	wire	[31:0]	o_dbg_reset,
@@ -131,6 +132,7 @@ module	sata_controller #(
 	wire	[31:0]	tx_link_data;
 	wire		link_reset_request;
 	reg		rx_linkup, rx_linkup_xpipe;
+	wire	[3:0]	oob_status;
 	// }}}
 
 	assign	cfg_continue_en  = 1'b1;
@@ -155,6 +157,8 @@ module	sata_controller #(
 		.i_clk(i_clk), .i_reset(i_reset),
 		.i_phy_clk(i_txphy_clk),
 		.o_phy_reset(o_phy_reset),
+		.i_phy_status(i_phy_status),
+		.i_oob_status(oob_status),
 		// Wishbone SOC interface
 		// {{{
 		.i_wb_cyc(i_wb_cyc), .i_wb_stb(i_wb_stb), .i_wb_we(i_wb_we),
@@ -299,6 +303,7 @@ module	sata_controller #(
 		.i_phy_ready(i_txphy_ready),
 		// }}}
 		//
+		.o_oob_status(oob_status),
 		.o_link_up(comlink_up),		// TX clock domain
 		.o_debug(o_dbg_reset)		// TX clock domain
 	);

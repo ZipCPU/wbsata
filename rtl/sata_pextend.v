@@ -38,38 +38,32 @@
 `default_nettype none
 `timescale	1ns/1ps
 // }}}
-module	sata_pextend #(
-		parameter	COUNTS = 4
-	) (
+module	sata_pextend (
 		input	wire	i_clk, i_reset,
 		input	wire	i_sig,
 		output	reg	o_sig
 	);
 
-	localparam	LGCOUNTS = $clog2(COUNTS+1);
-	reg	[LGCOUNTS-1:0]	counter;
+	(* ASYNC_REG = "TRUE" *)
+	reg	[2:0]	sreg;
+	(* ASYNC_REG = "TRUE" *)
+	reg		cdc_xpipe;
+	wire		trigger;
 
-	initial	counter = 0;
-	initial	o_sig = 0;
+	assign	trigger = i_sig && !i_reset;
+
+	always @(posedge i_clk or posedge trigger)
+	if (trigger)
+		sreg <= 3'h7;
+	else
+		sreg <= { sreg[1:0], 1'b0 };
+
 	always @(posedge i_clk)
 	if (i_reset)
-	begin
-		counter <= 0;
-		o_sig <= 1'b0;
-	end else if (counter != 0)
-	begin
-		counter <= counter -1;
-		o_sig <= (counter > 1);
-		if (i_sig && counter == 1)
-		begin
-			counter <= 1;
-			o_sig <= 1'b1;
-		end
-	end else if (i_sig)
-	begin
-		counter <= COUNTS;
-		o_sig <= 1'b1;
-	end
+		{ o_sig, cdc_xpipe } <= 2'b0;
+	else
+		{ o_sig, cdc_xpipe } <= { cdc_xpipe, sreg[2] };
+
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -80,39 +74,7 @@ module	sata_pextend #(
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 `ifdef	FORMAL
-	reg	f_past_valid;
-
-	initial	f_past_valid = 0;
-	always @(posedge i_clk)
-		f_past_valid <= 1;
-
-	always @(*)
-	if (!f_past_valid)
-		assume(i_reset);
-
-	always @(*)
-		assert(counter <= COUNTS);
-	always @(*)
-		assert(o_sig == (counter != 0));
-
-	always @(posedge i_clk)
-	if (!f_past_valid || $past(i_reset))
-		assert(!o_sig);
-	else if ($past(i_sig))
-		assert(o_sig);
-
-	always @(posedge i_clk)
-	if (f_past_valid && !$past(i_reset) && !$past(i_reset,2))
-	begin
-		if ($past(o_sig) && $past(o_sig,2) && $past(!o_sig,3))
-			assert(o_sig);
-	end
-
-	always @(posedge i_clk)
-	if (f_past_valid && !i_reset && !$past(i_reset))
-	begin
-		cover($fell(o_sig));
-	end
+	// This IP has been rewritten since it was last formally verified.
 `endif
 // }}}
 endmodule

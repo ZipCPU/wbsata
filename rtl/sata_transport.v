@@ -57,12 +57,13 @@ module	sata_transport #(
 		// }}}
 	) (
 		// {{{
-		input	wire		i_clk,
+		input	wire		i_clk, i_phy_clk,
 		// Verilator lint_off SYNCASYNCNET
 		input	wire		i_reset,
-		// Verilator lint_on  SYNCASYNCNET
-		input	wire		i_phy_clk,
 		output	wire		o_phy_reset,
+		// Verilator lint_on  SYNCASYNCNET
+		input	wire	[3:0]	i_phy_status,
+		input	wire	[3:0]	i_oob_status,
 		// Wishbone SOC interface
 		// {{{
 		input	wire		i_wb_cyc, i_wb_stb, i_wb_we,
@@ -260,6 +261,8 @@ module	sata_transport #(
 	) u_fsm (
 		.i_clk(i_clk), .i_reset(i_reset),
 		.o_phy_reset(o_phy_reset),
+		.i_phy_status(i_phy_status),
+		.i_oob_status(i_oob_status),
 		// Wishbone control inputs
 		// {{{
 		.i_wb_cyc(i_wb_cyc),	.i_wb_stb(i_wb_stb),
