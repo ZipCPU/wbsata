@@ -79,7 +79,9 @@ module	sata_phyinit (
 	reg	[4:0]	pll_lock_pipe;
 	reg		pll_locked;
 
+	(* ASYNC_REG="TRUE" *)
 	reg	[4:0]	gtx_reset_pipe;
+	(* ASYNC_REG="TRUE" *)
 	reg		gtx_reset_done;
 
 	reg		r_pll_reset, r_gtx_reset, r_user_ready, r_complete;

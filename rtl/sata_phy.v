@@ -550,12 +550,23 @@ module	sata_phy #(
 		assign	pll_debug = { 6'h0, qpll_fbck_lost, qpll_refck_lost };
 		// }}}
 	end else begin : NO_QPLL
+		reg	drp_ready;
 
 		assign	qpll_clk   = 1'b0;
 		assign	qpll_refck = 1'b0;
 		assign	pll_locked = cpll_locked;
 		assign	cpll_reset = i_reset || i_user_reset;
 		assign	pll_debug = 7'h0;
+
+		initial	drp_ready = 1'b0;
+		always @(posedge i_wb_clk)
+		if (i_reset)
+			drp_ready <= 1'b0;
+		else
+			drp_ready <= pll_drp_enable;
+
+		assign	pll_drp_ready = drp_ready;
+		assign	pll_drp_data[15:0] = 16'h0;
 	end endgenerate
 
 	GTXE2_CHANNEL #(
