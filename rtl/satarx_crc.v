@@ -202,6 +202,7 @@ module	satarx_crc #(
 		integer	k;
 		reg	[31:0]	sreg;
 	begin
+	// Verilator lint_off BLKSEQ
 		sreg = prior;
 		for(k=0; k<32; k=k+1)
 		begin
@@ -212,6 +213,7 @@ module	satarx_crc #(
 		end
 
 		advance_crc = sreg;
+	// Verilator lint_on  BLKSEQ
 	end endfunction
 	// }}}
 ////////////////////////////////////////////////////////////////////////////////
